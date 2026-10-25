@@ -16,6 +16,7 @@ import { useAuth } from "../../state/auth";
 import { Icon } from "../../components/Icon";
 import { ENCODINGS, normalizeText, type DbfTable } from "./dbf";
 import type { WorkerResponse } from "./dbf.worker";
+import { DataGrid } from "./DataGrid";
 
 interface ColumnConfig {
   name: string; // nombre real del campo DBF
@@ -207,9 +208,10 @@ export function Articulos({ module }: { module: ModuleManifest }) {
     }
   }
 
-  // Límite de filas renderizadas para no colgar el DOM con miles de registros.
-  const RENDER_CAP = 500;
-  const shown = rows.slice(0, RENDER_CAP);
+  // Seleccion de filas (indices dentro de 'rows').
+  const [selected, setSelected] = useState<Set<number>>(new Set());
+  // Al cambiar el filtro/orden, limpiamos la seleccion (los indices cambian).
+  useEffect(() => setSelected(new Set()), [query, sortBy, sortDir, table]);
 
   return (
     <ModuleShell moduleId="articulos">
@@ -287,8 +289,8 @@ export function Articulos({ module }: { module: ModuleManifest }) {
               <span style={{ fontSize: 12, color: "var(--wtm-text-dim)" }}>
                 {fileName} · {rows.length.toLocaleString()} de{" "}
                 {table.recordCount.toLocaleString()} registros
-                {rows.length > RENDER_CAP
-                  ? ` (mostrando ${RENDER_CAP})`
+                {selected.size > 0
+                  ? ` · ${selected.size.toLocaleString()} seleccionado(s)`
                   : ""}
               </span>
             </div>
@@ -298,61 +300,24 @@ export function Articulos({ module }: { module: ModuleManifest }) {
               <ColumnEditor columns={columns} setColumns={setColumns} />
             )}
 
-            {/* Tabla de datos */}
-            <div className="ui-table-wrap">
-              <table className="ui-table">
-                <thead>
-                  <tr>
-                    {visibleColumns.map((c) => (
-                      <th
-                        key={c.name}
-                        style={{ cursor: "pointer", whiteSpace: "nowrap" }}
-                        onClick={() => toggleSort(c.name)}
-                        title="Ordenar"
-                      >
-                        {c.alias}
-                        {sortBy === c.name
-                          ? sortDir === "asc"
-                            ? " ▲"
-                            : " ▼"
-                          : ""}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {shown.map((row, i) => (
-                    <tr key={i}>
-                      {visibleColumns.map((c) => (
-                        <td key={c.name}>{formatCell(row[c.name])}</td>
-                      ))}
-                    </tr>
-                  ))}
-                  {shown.length === 0 && (
-                    <tr>
-                      <td
-                        colSpan={Math.max(1, visibleColumns.length)}
-                        style={{ textAlign: "center" }}
-                      >
-                        Sin resultados.
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
+            {/* Tabla virtualizada y seleccionable */}
+            <DataGrid
+              columns={visibleColumns.map((c) => ({
+                name: c.name,
+                alias: c.alias,
+              }))}
+              rows={rows}
+              sortBy={sortBy}
+              sortDir={sortDir}
+              onSort={toggleSort}
+              selected={selected}
+              setSelected={setSelected}
+            />
           </>
         )}
       </ModuleBody>
     </ModuleShell>
   );
-}
-
-function formatCell(v: unknown): string {
-  if (v == null) return "";
-  if (typeof v === "boolean") return v ? "Si" : "No";
-  if (typeof v === "number") return v.toLocaleString();
-  return String(v);
 }
 
 /** Editor de columnas: visibilidad, alias y orden (subir/bajar). */

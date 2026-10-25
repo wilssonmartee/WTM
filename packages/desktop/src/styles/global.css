@@ -444,8 +444,11 @@ button {
 .ui-module__body,
 .wtm-module__content {
   flex: 1;
+  min-height: 0;
   overflow: auto;
   padding: 18px;
+  display: flex;
+  flex-direction: column;
   /* Permite que los hijos respondan al ancho de la VENTANA, no de la pantalla. */
   container-type: inline-size;
 }
@@ -1535,4 +1538,84 @@ button {
 /* Iconos de escritorio: etiqueta siempre blanca sobre el fondo Aero */
 .wtm-deskicon__label {
   color: #fff;
+}
+
+/* --- DataGrid virtualizado (modulo Articulos) --- */
+.ui-grid {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 300px;
+  border: 1px solid var(--wtm-border);
+  border-radius: var(--wtm-radius);
+  overflow: hidden;
+  background: var(--wtm-surface-solid);
+  outline: none;
+}
+.ui-grid__head {
+  display: grid;
+  background: linear-gradient(180deg, #f3f7fc, #e4ecf6);
+  border-bottom: 1px solid var(--wtm-border);
+  flex-shrink: 0;
+}
+[data-mode="dark"] .ui-grid__head {
+  background: linear-gradient(180deg, #2d3540, #262d38);
+}
+.ui-grid__th {
+  padding: 8px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #3c5676;
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  border-right: 1px solid rgba(0, 0, 0, 0.05);
+}
+[data-mode="dark"] .ui-grid__th {
+  color: #9fb0c4;
+  border-right-color: rgba(255, 255, 255, 0.05);
+}
+.ui-grid__th:hover {
+  color: var(--wtm-accent-2);
+}
+.ui-grid__body {
+  flex: 1;
+  overflow: auto;
+  position: relative;
+}
+.ui-grid__row {
+  font-size: 12.5px;
+  border-bottom: 1px solid var(--wtm-border);
+  cursor: default;
+}
+.ui-grid__row:hover {
+  background: var(--wtm-glass);
+}
+.ui-grid__row--sel {
+  background: linear-gradient(180deg, #cfe6fb, #b9d8f5) !important;
+}
+[data-mode="dark"] .ui-grid__row--sel {
+  background: linear-gradient(180deg, #2b5a8a, #234d78) !important;
+  color: #eaf3ff;
+}
+.ui-grid__cell {
+  padding: 6px 10px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  border-right: 1px solid rgba(0, 0, 0, 0.04);
+  display: flex;
+  align-items: center;
+}
+[data-mode="dark"] .ui-grid__cell {
+  border-right-color: rgba(255, 255, 255, 0.04);
+}
+.ui-grid__empty {
+  padding: 24px;
+  text-align: center;
+  color: var(--wtm-text-dim);
 }
