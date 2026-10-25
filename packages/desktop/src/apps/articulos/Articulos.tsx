@@ -14,7 +14,8 @@ import {
 import { api } from "../../lib/api";
 import { useAuth } from "../../state/auth";
 import { Icon } from "../../components/Icon";
-import { ENCODINGS, normalizeText, parseDbf, type DbfTable } from "./dbf";
+import { ENCODINGS, normalizeText, type DbfTable } from "./dbf";
+import type { WorkerResponse } from "./dbf.worker";
 
 interface ColumnConfig {
   name: string; // nombre real del campo DBF
@@ -33,6 +34,9 @@ export function Articulos({ module }: { module: ModuleManifest }) {
   const { levelFor } = useAuth();
   const canConfig = levelFor("articulos") >= 2; // nivel 2+ puede guardar config
   const [table, setTable] = useState<DbfTable | null>(null);
+  // Indice de busqueda precalculado (texto normalizado por registro).
+  const [searchIndex, setSearchIndex] = useState<string[]>([]);
+  const [loading, setLoading] = useState(false);
   const [fileName, setFileName] = useState("");
   const [encoding, setEncoding] = useState("auto");
   const [lastBuffer, setLastBuffer] = useState<ArrayBuffer | null>(null);
@@ -45,6 +49,17 @@ export function Articulos({ module }: { module: ModuleManifest }) {
   const [savedMsg, setSavedMsg] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
   const savedConfigRef = useRef<SavedConfig | null>(null);
+  const workerRef = useRef<Worker | null>(null);
+
+  // Worker para parsear el DBF fuera del hilo principal (no congela la UI).
+  useEffect(() => {
+    const worker = new Worker(
+      new URL("./dbf.worker.ts", import.meta.url),
+      { type: "module" },
+    );
+    workerRef.current = worker;
+    return () => worker.terminate();
+  }, []);
 
   // Cargar config global guardada (columnas/alias/orden/encoding).
   useEffect(() => {
@@ -96,17 +111,34 @@ export function Articulos({ module }: { module: ModuleManifest }) {
   }
 
   function parseInto(buf: ArrayBuffer, enc: string) {
-    try {
-      const t = parseDbf(buf, enc);
-      setTable(t);
-      setColumns(buildColumns(t.fields, savedConfigRef.current));
-      if (enc === "auto") setEncoding(t.encoding);
-    } catch (err) {
-      setError(
-        err instanceof Error ? err.message : "El archivo no parece un DBF valido",
-      );
-      setTable(null);
-    }
+    const worker = workerRef.current;
+    if (!worker) return;
+    setLoading(true);
+    setError("");
+    // Clonamos el buffer porque el worker lo transfiere (lo "consume").
+    const copy = buf.slice(0);
+    const onMsg = (ev: MessageEvent<WorkerResponse>) => {
+      worker.removeEventListener("message", onMsg);
+      setLoading(false);
+      const r = ev.data;
+      if (!r.ok || !r.fields || !r.records) {
+        setError(r.error ?? "El archivo no parece un DBF valido");
+        setTable(null);
+        return;
+      }
+      setTable({
+        fields: r.fields,
+        records: r.records,
+        recordCount: r.recordCount ?? r.records.length,
+        encoding: r.encoding ?? enc,
+        detectedEncoding: r.detectedEncoding ?? enc,
+      });
+      setSearchIndex(r.searchIndex ?? []);
+      setColumns(buildColumns(r.fields, savedConfigRef.current));
+      if (enc === "auto" && r.encoding) setEncoding(r.encoding);
+    };
+    worker.addEventListener("message", onMsg);
+    worker.postMessage({ buffer: copy, encoding: enc }, [copy]);
   }
 
   // Re-parsear al cambiar la codificacion (sin volver a elegir archivo).
@@ -120,17 +152,16 @@ export function Articulos({ module }: { module: ModuleManifest }) {
     [columns],
   );
 
-  // Filtrado (busqueda normalizada) + orden.
+  // Filtrado rapido usando el indice de busqueda PRECALCULADO (en el worker).
+  // No volvemos a normalizar texto en cada tecla: solo comparamos substrings.
   const rows = useMemo(() => {
     if (!table) return [];
     let data = table.records;
     const q = normalizeText(query);
-    if (q) {
+    if (q && searchIndex.length === data.length) {
       const terms = q.split(" ");
-      data = data.filter((row) => {
-        const hay = normalizeText(
-          visibleColumns.map((c) => row[c.name]).join(" "),
-        );
+      data = data.filter((_row, i) => {
+        const hay = searchIndex[i];
         return terms.every((t) => hay.includes(t));
       });
     }
@@ -144,13 +175,14 @@ export function Articulos({ module }: { module: ModuleManifest }) {
         if (bv == null) return dir;
         if (typeof av === "number" && typeof bv === "number")
           return (av - bv) * dir;
-        return (
-          normalizeText(av).localeCompare(normalizeText(bv)) * dir
-        );
+        return String(av).localeCompare(String(bv), "es", {
+          sensitivity: "base",
+          numeric: true,
+        }) * dir;
       });
     }
     return data;
-  }, [table, query, visibleColumns, sortBy, sortDir]);
+  }, [table, query, searchIndex, sortBy, sortDir]);
 
   function toggleSort(col: string) {
     if (sortBy === col) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
@@ -230,8 +262,9 @@ export function Articulos({ module }: { module: ModuleManifest }) {
       <ModuleBody>
         {error && <Notice tone="error">{error}</Notice>}
         {savedMsg && <Notice tone="success">{savedMsg}</Notice>}
+        {loading && <Notice>Procesando el archivo... un momento.</Notice>}
 
-        {!table && (
+        {!table && !loading && (
           <Notice>
             Pulsa "Abrir DBF..." y elige un archivo .dbf de tu equipo. El archivo
             se procesa localmente en tu navegador; no se sube a ningun servidor.

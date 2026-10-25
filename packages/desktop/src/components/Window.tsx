@@ -38,7 +38,8 @@ export function Window({
   );
   const snapZone = useRef<SnapZone>(null);
 
-  if (win.minimized) return null;
+  // No desmontamos al minimizar: solo ocultamos. Asi el estado del modulo
+  // (p.ej. el DBF ya cargado) se conserva al restaurar la ventana.
 
   function startDrag(e: React.MouseEvent) {
     if (win.maximized) return;
@@ -113,7 +114,7 @@ export function Window({
   return (
     <div
       className={`wtm-window ${win.maximized ? "wtm-window--max" : ""}`}
-      style={style}
+      style={{ ...style, display: win.minimized ? "none" : undefined }}
       onMouseDown={onFocus}
     >
       <div
