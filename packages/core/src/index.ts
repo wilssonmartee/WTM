@@ -203,8 +203,11 @@ function localIPs(): string[] {
   return ips;
 }
 
-// --- Terminal via WebSocket ---
-const wss = new WebSocketServer({ server, path: "/ws/terminal" });
+// --- WebSockets ---
+// Usamos noServer:true y enrutamos el 'upgrade' por path a mano. Tener dos
+// WebSocketServer con 'path' sobre el mismo http.Server hacia que ambos
+// atendieran cada upgrade y corrompieran la conexion ("RSV1 must be clear").
+const wss = new WebSocketServer({ noServer: true });
 
 wss.on("connection", (socket, req) => {
   const url = new URL(req.url ?? "", "http://localhost");
@@ -241,7 +244,24 @@ wss.on("connection", (socket, req) => {
 });
 
 // --- WebSocket de eventos del sistema (recarga tras actualizar) ---
-const systemWss = new WebSocketServer({ server, path: "/ws/system" });
+const systemWss = new WebSocketServer({ noServer: true });
+
+// Enrutamos cada upgrade al WebSocketServer correcto segun el path.
+server.on("upgrade", (req, socket, head) => {
+  const { pathname } = new URL(req.url ?? "", "http://localhost");
+  if (pathname === "/ws/terminal") {
+    wss.handleUpgrade(req, socket, head, (ws) => {
+      wss.emit("connection", ws, req);
+    });
+  } else if (pathname === "/ws/system") {
+    systemWss.handleUpgrade(req, socket, head, (ws) => {
+      systemWss.emit("connection", ws, req);
+    });
+  } else {
+    socket.destroy();
+  }
+});
+
 updater.onReloadRequested((reason) => {
   const msg = JSON.stringify({ type: "system-reload", reason });
   for (const client of systemWss.clients) {
