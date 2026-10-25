@@ -25,6 +25,8 @@ export function applyAppearance(a: Appearance): void {
   r.setProperty("--wtm-surface", a.colors.surface);
   r.setProperty("--wtm-surface-solid", a.colors.surfaceSolid);
   r.setProperty("--wtm-border", a.colors.border);
+  // border-strong se deriva del border para los relieves Aero.
+  r.setProperty("--wtm-border-strong", a.colors.border);
   r.setProperty("--wtm-text", a.colors.text);
   r.setProperty("--wtm-text-dim", a.colors.textDim);
   r.setProperty("--wtm-accent", a.colors.accent);

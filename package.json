@@ -7,7 +7,8 @@
   "workspaces": [
     "packages/core",
     "packages/desktop",
-    "packages/shared"
+    "packages/shared",
+    "packages/ui"
   ],
   "scripts": {
     "dev": "npm run dev --workspace @wtm/core & npm run dev --workspace @wtm/desktop",

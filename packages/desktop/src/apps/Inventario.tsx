@@ -1,5 +1,19 @@
 import { useCallback, useEffect, useState } from "react";
 import type { ModuleManifest } from "@wtm/shared";
+import {
+  Button,
+  CardGrid,
+  Input,
+  ModuleBody,
+  ModuleHeader,
+  ModuleShell,
+  Notice,
+  StatCard,
+  Table,
+  Tag,
+  Toolbar,
+  Spacer,
+} from "@wtm/ui";
 import { api } from "../lib/api";
 import { Icon } from "../components/Icon";
 
@@ -12,7 +26,6 @@ interface Product {
   min_stock: number;
   price: number;
 }
-
 interface Summary {
   products: number;
   lowStock: number;
@@ -20,9 +33,9 @@ interface Summary {
 }
 
 /**
- * UI real del modulo Inventario. Consume /api/m/inventario del core.
- * Es la prueba end-to-end del sistema de modulos: datos reales en la DB,
- * API del modulo montada dinamicamente, y esta vista conectada.
+ * Inventario: ejemplo de modulo construido con el kit @wtm/ui.
+ * Fijate que NO hay HTML de estilo ni clases de diseno: solo componentes del
+ * kit + los datos. Toda la estetica viene del tema del layout.
  */
 export function Inventario({ module }: { module: ModuleManifest }) {
   const [products, setProducts] = useState<Product[]>([]);
@@ -79,177 +92,145 @@ export function Inventario({ module }: { module: ModuleManifest }) {
     });
     await load();
   }
-
   async function remove(id: string) {
-    await api.moduleCall(`inventario`, `/products/${id}`, {
-      method: "DELETE",
-    });
+    await api.moduleCall(`inventario`, `/products/${id}`, { method: "DELETE" });
     await load();
   }
 
   return (
-    <div className="wtm-module">
-      <div className="wtm-module__head">
-        <div className="wtm-module__icon" style={{ background: module.color }}>
-          <Icon name={module.icon} size={20} />
-        </div>
-        <div className="wtm-module__title">
-          <h2>{module.name}</h2>
-          <p>{module.description}</p>
-        </div>
-      </div>
+    <ModuleShell moduleId="inventario">
+      <ModuleHeader
+        icon={<Icon name={module.icon} size={20} />}
+        color={module.color}
+        title={module.name}
+        subtitle={module.description}
+      />
 
-      <div className="wtm-toolbar">
-        <button
-          className="wtm-tool wtm-tool--primary"
-          onClick={() => setAdding((a) => !a)}
-        >
+      <Toolbar>
+        <Button variant="primary" onClick={() => setAdding((a) => !a)}>
           {adding ? "Cancelar" : "Nuevo producto"}
-        </button>
-        <button className="wtm-tool" onClick={load}>
-          Actualizar
-        </button>
-        <div style={{ flex: 1 }} />
-        <span className="wtm-chip">Datos compartidos entre empresas</span>
-      </div>
+        </Button>
+        <Button onClick={load}>Actualizar</Button>
+        <Spacer />
+        <Tag>Datos compartidos entre empresas</Tag>
+      </Toolbar>
 
-      <div className="wtm-module__content">
-        {error && <div className="wtm-notice">{error}</div>}
+      <ModuleBody>
+        {error && <Notice tone="error">{error}</Notice>}
 
         {summary && (
-          <div className="wtm-cards">
-            <div className="wtm-card">
-              <div className="wtm-card__value">{summary.products}</div>
-              <div className="wtm-card__label">Productos</div>
-            </div>
-            <div className="wtm-card">
-              <div className="wtm-card__value">{summary.lowStock}</div>
-              <div className="wtm-card__label">Bajo stock</div>
-            </div>
-            <div className="wtm-card">
-              <div className="wtm-card__value">{summary.warehouses}</div>
-              <div className="wtm-card__label">Almacenes</div>
-            </div>
-          </div>
+          <CardGrid>
+            <StatCard value={summary.products} label="Productos" />
+            <StatCard value={summary.lowStock} label="Bajo stock" />
+            <StatCard value={summary.warehouses} label="Almacenes" />
+          </CardGrid>
         )}
 
         {adding && (
           <form
             onSubmit={createProduct}
-            style={{
-              display: "flex",
-              gap: 8,
-              marginTop: 16,
-              flexWrap: "wrap",
-            }}
+            style={{ display: "flex", gap: 8, marginTop: 16, flexWrap: "wrap" }}
           >
-            <input
-              className="wtm-input"
+            <Input
               style={{ width: 130 }}
               placeholder="SKU"
               value={form.sku}
               onChange={(e) => setForm({ ...form, sku: e.target.value })}
               required
             />
-            <input
-              className="wtm-input"
+            <Input
               style={{ flex: 1, minWidth: 160 }}
               placeholder="Nombre"
               value={form.name}
               onChange={(e) => setForm({ ...form, name: e.target.value })}
               required
             />
-            <input
-              className="wtm-input"
+            <Input
               style={{ width: 130 }}
               placeholder="Almacen"
               value={form.warehouse}
               onChange={(e) => setForm({ ...form, warehouse: e.target.value })}
             />
-            <input
-              className="wtm-input"
+            <Input
               style={{ width: 90 }}
               type="number"
               placeholder="Stock"
               value={form.stock}
               onChange={(e) => setForm({ ...form, stock: e.target.value })}
             />
-            <button className="wtm-tool wtm-tool--primary" type="submit">
+            <Button variant="primary" type="submit">
               Guardar
-            </button>
+            </Button>
           </form>
         )}
 
         {loading ? (
-          <div className="wtm-notice">Cargando...</div>
+          <Notice>Cargando...</Notice>
         ) : (
-          <table className="wtm-table">
-            <thead>
-              <tr>
-                <th>SKU</th>
-                <th>Producto</th>
-                <th>Almacen</th>
-                <th>Stock</th>
-                <th>Estado</th>
-                <th style={{ textAlign: "right" }}>Acciones</th>
-              </tr>
-            </thead>
-            <tbody>
-              {products.map((p) => {
-                const low = p.stock <= p.min_stock;
-                const out = p.stock === 0;
-                return (
-                  <tr key={p.id}>
-                    <td>{p.sku}</td>
-                    <td>{p.name}</td>
-                    <td>{p.warehouse}</td>
-                    <td>{p.stock.toLocaleString()}</td>
-                    <td>
-                      {out ? (
-                        <span className="wtm-tag wtm-tag--warn">Agotado</span>
-                      ) : low ? (
-                        <span className="wtm-tag wtm-tag--warn">Bajo</span>
-                      ) : (
-                        <span className="wtm-tag wtm-tag--ok">OK</span>
-                      )}
-                    </td>
-                    <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>
-                      <button
-                        className="wtm-tool"
-                        onClick={() => adjust(p.id, 1)}
-                        style={{ padding: "3px 8px" }}
-                      >
-                        +1
-                      </button>{" "}
-                      <button
-                        className="wtm-tool"
-                        onClick={() => adjust(p.id, -1)}
-                        style={{ padding: "3px 8px" }}
-                      >
-                        -1
-                      </button>{" "}
-                      <button
-                        className="wtm-tool"
-                        onClick={() => remove(p.id)}
-                        style={{ padding: "3px 8px" }}
-                      >
-                        Eliminar
-                      </button>
-                    </td>
-                  </tr>
-                );
-              })}
-              {products.length === 0 && (
-                <tr>
-                  <td colSpan={6} style={{ textAlign: "center" }}>
-                    Sin productos. Crea el primero.
+          <Table
+            columns={[
+              "SKU",
+              "Producto",
+              "Almacen",
+              "Stock",
+              "Estado",
+              <span style={{ float: "right" }}>Acciones</span>,
+            ]}
+          >
+            {products.map((p) => {
+              const out = p.stock === 0;
+              const low = p.stock <= p.min_stock;
+              return (
+                <tr key={p.id}>
+                  <td>{p.sku}</td>
+                  <td>{p.name}</td>
+                  <td>{p.warehouse}</td>
+                  <td>{p.stock.toLocaleString()}</td>
+                  <td>
+                    {out ? (
+                      <Tag tone="danger">Agotado</Tag>
+                    ) : low ? (
+                      <Tag tone="warn">Bajo</Tag>
+                    ) : (
+                      <Tag tone="ok">OK</Tag>
+                    )}
+                  </td>
+                  <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>
+                    <Button
+                      variant="ghost"
+                      style={{ padding: "3px 9px" }}
+                      onClick={() => adjust(p.id, 1)}
+                    >
+                      +1
+                    </Button>{" "}
+                    <Button
+                      variant="ghost"
+                      style={{ padding: "3px 9px" }}
+                      onClick={() => adjust(p.id, -1)}
+                    >
+                      -1
+                    </Button>{" "}
+                    <Button
+                      variant="ghost"
+                      style={{ padding: "3px 9px" }}
+                      onClick={() => remove(p.id)}
+                    >
+                      Eliminar
+                    </Button>
                   </td>
                 </tr>
-              )}
-            </tbody>
-          </table>
+              );
+            })}
+            {products.length === 0 && (
+              <tr>
+                <td colSpan={6} style={{ textAlign: "center" }}>
+                  Sin productos. Crea el primero.
+                </td>
+              </tr>
+            )}
+          </Table>
         )}
-      </div>
-    </div>
+      </ModuleBody>
+    </ModuleShell>
   );
 }

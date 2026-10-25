@@ -19,7 +19,8 @@
     "forceConsistentCasingInFileNames": true,
     "baseUrl": ".",
     "paths": {
-      "@wtm/shared": ["../shared/src/index.ts"]
+      "@wtm/shared": ["../shared/src/index.ts"],
+      "@wtm/ui": ["../ui/src/index.ts"]
     }
   },
   "include": ["src"]

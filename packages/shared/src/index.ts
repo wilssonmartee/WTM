@@ -151,21 +151,20 @@ export const DEFAULT_APPEARANCE: Appearance = {
   logoText: "W",
   mode: "dark",
   colors: {
-    // Paleta sobria tipo estacion de trabajo: grises neutros y un unico
-    // azul discreto como acento. Sin degradados ni translucidos.
-    bg: "#16181d",
-    bg2: "#1b1e24",
-    surface: "#1f232b",
-    surfaceSolid: "#23272f",
-    border: "#30353e",
-    text: "#d6d9df",
-    textDim: "#8b919c",
+    // Paleta sobria con calidez tipo Aero (degradados suaves en el CSS).
+    bg: "#1a1d23",
+    bg2: "#20242c",
+    surface: "#262b33",
+    surfaceSolid: "#2a2f38",
+    border: "#3a4049",
+    text: "#e3e6ec",
+    textDim: "#9aa2af",
     accent: "#3b82f6",
     accent2: "#2563eb",
-    danger: "#dc2626",
+    danger: "#e0564f",
   },
-  radius: 6,
-  taskbarHeight: 40,
+  radius: 7,
+  taskbarHeight: 44,
 };
 
 // ===================================================================

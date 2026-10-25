@@ -8,11 +8,12 @@ export default defineConfig({
   plugins: [react()],
   resolve: {
     alias: {
-      // Resolver @wtm/shared directo al codigo fuente, sin depender del
-      // symlink de workspaces (que es fragil en Windows / unidades de red).
+      // Resolver los paquetes internos directo al codigo fuente, sin depender
+      // del symlink de workspaces (fragil en Windows / unidades de red).
       "@wtm/shared": fileURLToPath(
         new URL("../shared/src/index.ts", import.meta.url),
       ),
+      "@wtm/ui": fileURLToPath(new URL("../ui/src/index.ts", import.meta.url)),
     },
   },
   server: {
