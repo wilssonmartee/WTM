@@ -14,3 +14,10 @@ data/
 # tauri / rust
 client-native/target/
 client-native/src-tauri/target/
+
+# instaladores generados (se regeneran con el build del cliente nativo)
+dist-exe/
+
+# proceso del servidor
+data/wtm-server.pid
+data/wtm-server.log
