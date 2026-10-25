@@ -29,7 +29,7 @@ export function Desktop() {
   const [clock, setClock] = useState(new Date());
   const [busy, setBusy] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
-  const wm = useWindows();
+  const wm = useWindows(user?.id ?? null, modules);
   const taskbarH = appearance.taskbarHeight;
   const isSuperadmin = user?.globalRole === "superadmin";
 
