@@ -1,4 +1,6 @@
 # No enviar al contexto de build lo que se regenera o es local.
+# OJO: .git SI se incluye a proposito, para que la autoactualizacion por
+# GitHub funcione dentro del contenedor (git pull + rebuild + reinicio).
 node_modules
 **/node_modules
 **/dist
@@ -6,6 +8,5 @@ data
 dist-exe
 client-native/target
 client-native/src-tauri/target
-.git
 *.log
 .DS_Store

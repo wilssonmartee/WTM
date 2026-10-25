@@ -18,6 +18,20 @@ WTM/
 └─ scripts/       Instaladores (Linux / Windows)
 ```
 
+## Instalacion en un VPS (un comando)
+
+En el VPS (Linux), como root o con sudo:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/wilssonmartee/WTM/main/scripts/vps-install.sh | sudo bash
+```
+
+Instala Docker si falta, clona el repo, y levanta WTM en el puerto 4000.
+Variables opcionales: `WTM_PORT`, `WTM_DIR`, `WTM_BRANCH`, `WTM_ADMIN_PASSWORD`.
+
+Para actualizar manualmente, vuelve a ejecutar el mismo comando (hace git pull +
+rebuild). O usa la autoactualizacion por GitHub desde el modulo "Actualizaciones".
+
 ## Requisitos
 
 - Node.js 18 o superior
