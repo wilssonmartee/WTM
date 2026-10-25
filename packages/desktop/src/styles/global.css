@@ -1,34 +1,33 @@
 :root {
-  /* Paleta base (del tema del core). Estetica inspirada en Aero: sobria pero
-     con degradados suaves, brillos sutiles y transiciones. */
-  --wtm-bg: #1a1d23;
-  --wtm-bg-2: #20242c;
-  --wtm-surface: #262b33;
-  --wtm-surface-solid: #2a2f38;
-  --wtm-border: #3a4049;
-  --wtm-border-strong: #474e59;
-  --wtm-text: #e3e6ec;
-  --wtm-text-dim: #9aa2af;
-  --wtm-accent: #3b82f6;
-  --wtm-accent-2: #2563eb;
-  --wtm-danger: #e0564f;
-  --wtm-radius: 7px;
+  /* Tema (del core). Por defecto Aero claro estilo Windows 7. */
+  --wtm-bg: #5b89c4;
+  --wtm-bg-2: #3f6aa0;
+  --wtm-surface: #f1f5fb;
+  --wtm-surface-solid: #ffffff;
+  --wtm-border: #a9c2e0;
+  --wtm-border-strong: #8fabd0;
+  --wtm-text: #1b2430;
+  --wtm-text-dim: #5a6677;
+  --wtm-accent: #2f8fe0;
+  --wtm-accent-2: #1f6fc0;
+  --wtm-danger: #d64840;
+  --wtm-radius: 8px;
   --wtm-taskbar-h: 44px;
   --wtm-font:
-    ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica,
+    "Segoe UI", ui-sans-serif, system-ui, -apple-system, Roboto, Helvetica,
     Arial, sans-serif;
-  --wtm-mono: "Cascadia Code", "JetBrains Mono", "SF Mono", Menlo, Consolas,
-    monospace;
+  --wtm-mono: "Cascadia Code", "Consolas", "JetBrains Mono", Menlo, monospace;
 
-  /* Tokens de superficie "Aero": degradados y brillos derivados del tema. */
-  --wtm-glass: rgba(255, 255, 255, 0.04);
-  --wtm-sheen: rgba(255, 255, 255, 0.07);
-  --wtm-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.35);
-  --wtm-shadow-md: 0 6px 18px rgba(0, 0, 0, 0.35);
-  --wtm-shadow-lg: 0 16px 44px rgba(0, 0, 0, 0.5);
+  /* Tokens Aero */
+  --aero-glass: rgba(255, 255, 255, 0.55);
+  --aero-glass-dark: rgba(24, 40, 66, 0.72);
+  --aero-sheen: rgba(255, 255, 255, 0.85);
+  --wtm-shadow-sm: 0 1px 2px rgba(20, 40, 70, 0.18);
+  --wtm-shadow-md: 0 6px 18px rgba(20, 40, 70, 0.22);
+  --wtm-shadow-lg: 0 18px 50px rgba(15, 30, 60, 0.4);
 
   font-family: var(--wtm-font);
-  font-size: 14px;
+  font-size: 13.5px;
   -webkit-font-smoothing: antialiased;
 }
 
@@ -53,93 +52,115 @@ button {
 }
 
 ::-webkit-scrollbar {
-  width: 11px;
-  height: 11px;
+  width: 16px;
+  height: 16px;
+}
+::-webkit-scrollbar-track {
+  background: #e8eef6;
 }
 ::-webkit-scrollbar-thumb {
-  background: linear-gradient(
-    var(--wtm-border-strong),
-    var(--wtm-border)
-  );
+  border: 3px solid #e8eef6;
   border-radius: 10px;
-  border: 2px solid transparent;
-  background-clip: padding-box;
+  background: linear-gradient(180deg, #c3d2e6, #a7bcd8);
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #555d6a;
-  background-clip: padding-box;
+  background: linear-gradient(180deg, #aec2db, #8fabd0);
 }
 
 /* =====================================================================
-   KIT DE UI COMPARTIDO (@wtm/ui) — clases ui-*
-   Todos los modulos lo usan; cambia el tema y cambian todos.
+   BOTON AERO (base del kit y de todo el sistema)
    ===================================================================== */
-
-.ui-btn {
+.ui-btn,
+.wtm-tool {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 7px;
-  padding: 7px 14px;
+  padding: 6px 15px;
   font-size: 13px;
   font-weight: 500;
-  color: var(--wtm-text);
-  border-radius: var(--wtm-radius);
-  border: 1px solid var(--wtm-border-strong);
-  /* Degradado suave estilo Aero + brillo superior interno. */
+  color: #1a2a3d;
+  border-radius: 4px;
+  border: 1px solid #8ba7c9;
+  /* Degradado Aero: brillo arriba, curva de luz a media altura. */
   background: linear-gradient(
     180deg,
-    var(--wtm-sheen),
-    rgba(255, 255, 255, 0) 48%
-  ),
-  linear-gradient(180deg, var(--wtm-surface-solid), var(--wtm-surface));
-  box-shadow: var(--wtm-shadow-sm), inset 0 1px 0 rgba(255, 255, 255, 0.06);
-  transition: filter 0.15s, transform 0.06s, box-shadow 0.15s,
-    border-color 0.15s;
+    #fdfefe 0%,
+    #eaf1f9 47%,
+    #d6e3f2 50%,
+    #e3eef9 100%
+  );
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.95),
+    0 1px 1px rgba(30, 60, 100, 0.12);
+  transition: background 0.12s, border-color 0.12s, box-shadow 0.12s,
+    transform 0.05s;
 }
-.ui-btn:hover {
-  filter: brightness(1.12);
-  border-color: var(--wtm-accent);
+.ui-btn:hover,
+.wtm-tool:hover {
+  border-color: #5a9bd8;
+  background: linear-gradient(
+    180deg,
+    #f2f9ff 0%,
+    #dcecfb 47%,
+    #c2ddf6 50%,
+    #d6ecfc 100%
+  );
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.95),
+    0 0 6px rgba(90, 160, 230, 0.4);
 }
-.ui-btn:active {
+.ui-btn:active,
+.wtm-tool:active {
   transform: translateY(1px);
-  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.3);
+  background: linear-gradient(180deg, #cfe2f5, #e2eefb);
+  box-shadow: inset 0 1px 3px rgba(40, 80, 130, 0.3);
 }
 .ui-btn:disabled {
-  opacity: 0.5;
+  opacity: 0.55;
   cursor: not-allowed;
-  filter: none;
 }
-.ui-btn--primary {
+.ui-btn--primary,
+.wtm-tool--primary {
   color: #fff;
   border-color: var(--wtm-accent-2);
   background: linear-gradient(
     180deg,
-    rgba(255, 255, 255, 0.22),
-    rgba(255, 255, 255, 0) 50%
-  ),
-  linear-gradient(180deg, var(--wtm-accent), var(--wtm-accent-2));
+    #6fc0f5 0%,
+    #2f8fe0 48%,
+    #1f6fc0 52%,
+    #3f93df 100%
+  );
+  text-shadow: 0 -1px 0 rgba(0, 0, 0, 0.25);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5),
+    0 1px 2px rgba(20, 60, 110, 0.3);
+}
+.ui-btn--primary:hover,
+.wtm-tool--primary:hover {
+  filter: brightness(1.07);
+  border-color: var(--wtm-accent);
 }
 .ui-btn--danger {
   color: #fff;
-  border-color: #b43b35;
+  border-color: #a83028;
   background: linear-gradient(
     180deg,
-    rgba(255, 255, 255, 0.2),
-    rgba(255, 255, 255, 0) 50%
-  ),
-  linear-gradient(180deg, #e0564f, #c33f39);
+    #f28b84 0%,
+    #d64840 48%,
+    #b53229 52%,
+    #d9564e 100%
+  );
+  text-shadow: 0 -1px 0 rgba(0, 0, 0, 0.25);
 }
 .ui-btn--ghost {
-  background: transparent;
   border-color: transparent;
+  background: transparent;
   box-shadow: none;
 }
 .ui-btn--ghost:hover {
-  background: var(--wtm-glass);
-  border-color: var(--wtm-border);
+  border-color: #9cc0e6;
+  background: linear-gradient(180deg, #f2f9ff, #dcecfb);
 }
 
+/* --- Campos / inputs --- */
 .ui-field {
   display: block;
   margin-bottom: 12px;
@@ -156,210 +177,215 @@ button {
   color: var(--wtm-text-dim);
   margin-top: 4px;
 }
-
-.ui-input {
+.ui-input,
+.wtm-input {
   width: 100%;
-  padding: 8px 11px;
+  padding: 7px 10px;
   font-size: 13px;
   color: var(--wtm-text);
-  border-radius: var(--wtm-radius);
-  border: 1px solid var(--wtm-border-strong);
-  background: linear-gradient(
-    180deg,
-    rgba(0, 0, 0, 0.14),
-    rgba(0, 0, 0, 0) 40%
-  ),
-  var(--wtm-bg);
-  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.25);
+  border-radius: 4px;
+  border: 1px solid #99b0ce;
+  background: #fff;
+  box-shadow: inset 0 1px 2px rgba(40, 70, 110, 0.14);
   outline: none;
-  transition: border-color 0.15s, box-shadow 0.15s;
+  transition: border-color 0.12s, box-shadow 0.12s;
 }
-.ui-input:focus {
-  border-color: var(--wtm-accent);
-  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.2),
-    0 0 0 3px rgba(59, 130, 246, 0.22);
+.ui-input:focus,
+.wtm-input:focus {
+  border-color: #4f9fe0;
+  box-shadow: inset 0 1px 2px rgba(40, 70, 110, 0.12),
+    0 0 5px rgba(90, 160, 230, 0.55);
 }
 .ui-select {
   cursor: pointer;
 }
 .ui-select option {
-  background: var(--wtm-surface-solid);
+  background: #fff;
 }
 
-.ui-toolbar {
+/* --- Toolbar --- */
+.ui-toolbar,
+.wtm-toolbar {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 10px 18px;
-  border-bottom: 1px solid var(--wtm-border);
-  background: linear-gradient(
-    180deg,
-    var(--wtm-sheen),
-    rgba(255, 255, 255, 0) 60%
-  ),
-  var(--wtm-surface);
+  padding: 9px 16px;
+  border-bottom: 1px solid #cdd9e8;
+  background: linear-gradient(180deg, #fbfdff, #eef3f9);
 }
 
-.ui-cards {
+/* --- Tarjetas --- */
+.ui-cards,
+.wtm-cards {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
   gap: 12px;
 }
-.ui-card {
+.ui-card,
+.wtm-card {
   padding: 15px;
-  border-radius: var(--wtm-radius);
-  border: 1px solid var(--wtm-border);
-  background: linear-gradient(
-    180deg,
-    var(--wtm-sheen),
-    rgba(255, 255, 255, 0) 55%
-  ),
-  var(--wtm-surface);
-  box-shadow: var(--wtm-shadow-sm);
+  border-radius: 6px;
+  border: 1px solid #cdd9e8;
+  background: linear-gradient(180deg, #ffffff, #f3f7fc);
+  box-shadow: 0 1px 2px rgba(30, 60, 100, 0.08);
 }
 .ui-card--accent {
   border-color: var(--wtm-accent);
 }
-.ui-card__value {
+.ui-card__value,
+.wtm-card__value {
   font-size: 23px;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
+  color: #16324f;
 }
-.ui-card__label {
+.ui-card__label,
+.wtm-card__label {
   font-size: 12px;
   color: var(--wtm-text-dim);
   margin-top: 3px;
 }
 
-.ui-tag {
+/* --- Tags --- */
+.ui-tag,
+.wtm-tag,
+.wtm-chip {
   display: inline-block;
   font-size: 11px;
   padding: 2px 9px;
-  border-radius: 20px;
-  border: 1px solid var(--wtm-border);
-  background: var(--wtm-bg);
+  border-radius: 10px;
+  border: 1px solid #c2d2e6;
+  background: #eef3fa;
   color: var(--wtm-text-dim);
 }
-.ui-tag--ok {
-  color: #67e0a3;
-  border-color: rgba(103, 224, 163, 0.35);
-  background: rgba(103, 224, 163, 0.08);
+.ui-tag--ok,
+.wtm-tag--ok {
+  color: #2f7d4f;
+  border-color: #a9d8bc;
+  background: #e8f6ee;
 }
-.ui-tag--warn {
-  color: #f1c04f;
-  border-color: rgba(241, 192, 79, 0.35);
-  background: rgba(241, 192, 79, 0.08);
+.ui-tag--warn,
+.wtm-tag--warn {
+  color: #9a6a10;
+  border-color: #e6cf9a;
+  background: #fbf3e0;
 }
 .ui-tag--danger {
-  color: #f08984;
-  border-color: rgba(240, 137, 132, 0.35);
-  background: rgba(240, 137, 132, 0.08);
+  color: #b53229;
+  border-color: #e6a9a4;
+  background: #fbe9e8;
 }
 
-.ui-notice {
+/* --- Avisos --- */
+.ui-notice,
+.wtm-notice {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 11px 14px;
   margin-top: 14px;
+  padding: 11px 14px;
   font-size: 12px;
   color: var(--wtm-text-dim);
-  border: 1px solid var(--wtm-border);
+  border: 1px solid #cdd9e8;
   border-left: 3px solid var(--wtm-accent);
-  border-radius: var(--wtm-radius);
-  background: var(--wtm-surface);
+  border-radius: 5px;
+  background: #f3f8fd;
 }
 .ui-notice--success {
-  border-left-color: #67e0a3;
+  border-left-color: #43a56a;
 }
 .ui-notice--error {
   border-left-color: var(--wtm-danger);
-  color: #f0a9a5;
+  color: #a83028;
 }
 
-.ui-table {
+/* --- Tablas --- */
+.ui-table,
+.wtm-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 12px;
+  font-size: 12.5px;
   margin-top: 14px;
-  border: 1px solid var(--wtm-border);
-  border-radius: var(--wtm-radius);
+  border: 1px solid #cdd9e8;
+  border-radius: 6px;
   overflow: hidden;
+  background: #fff;
 }
-.ui-table th {
+.ui-table th,
+.wtm-table th {
   text-align: left;
   padding: 9px 12px;
   font-size: 11px;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  color: var(--wtm-text-dim);
-  background: linear-gradient(
-    180deg,
-    var(--wtm-sheen),
-    rgba(255, 255, 255, 0) 70%
-  ),
-  var(--wtm-surface);
-  border-bottom: 1px solid var(--wtm-border);
+  color: #3c5676;
+  background: linear-gradient(180deg, #f3f7fc, #e4ecf6);
+  border-bottom: 1px solid #cdd9e8;
 }
-.ui-table td {
-  padding: 9px 12px;
-  border-bottom: 1px solid var(--wtm-border);
+.ui-table td,
+.wtm-table td {
+  padding: 8px 12px;
+  border-bottom: 1px solid #e4ecf4;
   color: var(--wtm-text);
 }
-.ui-table tr:last-child td {
+.ui-table tr:last-child td,
+.wtm-table tr:last-child td {
   border-bottom: none;
 }
-.ui-table tbody tr {
-  transition: background 0.1s;
-}
-.ui-table tbody tr:hover td {
-  background: var(--wtm-glass);
+.ui-table tbody tr:hover td,
+.wtm-table tr:hover td {
+  background: #eaf3fc;
 }
 
-.ui-module {
+/* --- Modulo --- */
+.ui-module,
+.wtm-module {
   display: flex;
   flex-direction: column;
   height: 100%;
 }
-.ui-module__head {
+.ui-module__head,
+.wtm-module__head {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 16px 18px;
-  border-bottom: 1px solid var(--wtm-border);
-  background: linear-gradient(
-    180deg,
-    var(--wtm-sheen),
-    rgba(255, 255, 255, 0) 80%
-  );
+  padding: 15px 18px;
+  border-bottom: 1px solid #cdd9e8;
+  background: linear-gradient(180deg, #ffffff, #eef3f9);
 }
-.ui-module__icon {
+.ui-module__icon,
+.wtm-module__icon {
   width: 38px;
   height: 38px;
-  border-radius: var(--wtm-radius);
+  border-radius: 7px;
   display: grid;
   place-items: center;
   color: #fff;
   flex-shrink: 0;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.25), var(--wtm-shadow-sm);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.4), var(--wtm-shadow-sm);
 }
-.ui-module__title h2 {
+.ui-module__title h2,
+.wtm-module__title h2 {
   margin: 0;
   font-size: 15px;
   font-weight: 600;
+  color: #16324f;
 }
-.ui-module__title p {
+.ui-module__title p,
+.wtm-module__title p {
   margin: 1px 0 0;
   font-size: 12px;
   color: var(--wtm-text-dim);
 }
-.ui-module__body {
+.ui-module__body,
+.wtm-module__content {
   flex: 1;
   overflow: auto;
   padding: 18px;
 }
-.ui-chips {
+.ui-chips,
+.wtm-chips {
   display: flex;
   gap: 6px;
   margin-bottom: 14px;
@@ -367,20 +393,19 @@ button {
 }
 
 /* =====================================================================
-   ESCRITORIO
+   ESCRITORIO (fondo tipo Aero)
    ===================================================================== */
-
 .wtm-desktop {
   position: relative;
   height: 100vh;
   width: 100vw;
   overflow: hidden;
   background: radial-gradient(
-      1200px 700px at 70% -10%,
-      rgba(59, 130, 246, 0.12),
-      transparent 60%
-    ),
-    linear-gradient(160deg, var(--wtm-bg), var(--wtm-bg-2));
+      1400px 900px at 50% 120%,
+      #9fc6ee 0%,
+      #6b9bd3 35%,
+      #3f6aa0 100%
+    );
 }
 .wtm-desktop__surface {
   position: absolute;
@@ -394,48 +419,44 @@ button {
   display: grid;
   place-items: center;
   background: radial-gradient(
-      900px 600px at 25% 0%,
-      rgba(59, 130, 246, 0.18),
-      transparent 60%
-    ),
-    linear-gradient(160deg, var(--wtm-bg), var(--wtm-bg-2));
+    1400px 900px at 50% 120%,
+    #9fc6ee 0%,
+    #6b9bd3 35%,
+    #3f6aa0 100%
+  );
 }
 .wtm-login__card {
   width: 350px;
   max-width: calc(100vw - 32px);
   padding: 30px;
-  border-radius: 12px;
-  border: 1px solid var(--wtm-border-strong);
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.6);
   background: linear-gradient(
     180deg,
-    var(--wtm-sheen),
-    rgba(255, 255, 255, 0) 40%
-  ),
-  linear-gradient(180deg, var(--wtm-surface-solid), var(--wtm-surface));
-  box-shadow: var(--wtm-shadow-lg), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+    rgba(255, 255, 255, 0.95),
+    rgba(238, 245, 252, 0.92)
+  );
+  box-shadow: var(--wtm-shadow-lg), inset 0 1px 0 rgba(255, 255, 255, 1);
+  backdrop-filter: blur(6px);
 }
 .wtm-login__logo {
-  width: 44px;
-  height: 44px;
+  width: 46px;
+  height: 46px;
   border-radius: 11px;
   display: grid;
   place-items: center;
   font-weight: 700;
-  font-size: 19px;
+  font-size: 20px;
   color: #fff;
   margin-bottom: 16px;
-  background: linear-gradient(
-    180deg,
-    rgba(255, 255, 255, 0.3),
-    rgba(255, 255, 255, 0) 50%
-  ),
-  linear-gradient(180deg, var(--wtm-accent), var(--wtm-accent-2));
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.4), var(--wtm-shadow-md);
+  background: linear-gradient(180deg, #6fc0f5, #2f8fe0 50%, #1f6fc0);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6), var(--wtm-shadow-md);
 }
 .wtm-login h1 {
   margin: 0 0 2px;
-  font-size: 19px;
+  font-size: 20px;
   font-weight: 600;
+  color: #16324f;
 }
 .wtm-login p {
   margin: 0 0 22px;
@@ -451,43 +472,22 @@ button {
   color: var(--wtm-text-dim);
   margin-bottom: 5px;
 }
-.wtm-input {
-  width: 100%;
-  padding: 9px 11px;
-  font-size: 13px;
-  color: var(--wtm-text);
-  border-radius: var(--wtm-radius);
-  border: 1px solid var(--wtm-border-strong);
-  background: linear-gradient(180deg, rgba(0, 0, 0, 0.14), rgba(0, 0, 0, 0) 40%),
-    var(--wtm-bg);
-  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.25);
-  outline: none;
-  transition: border-color 0.15s, box-shadow 0.15s;
-}
-.wtm-input:focus {
-  border-color: var(--wtm-accent);
-  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.2),
-    0 0 0 3px rgba(59, 130, 246, 0.22);
-}
 .wtm-btn {
   width: 100%;
-  padding: 10px;
-  font-size: 13px;
+  padding: 9px;
+  font-size: 14px;
   font-weight: 600;
   color: #fff;
-  border-radius: var(--wtm-radius);
+  border-radius: 5px;
   border: 1px solid var(--wtm-accent-2);
-  background: linear-gradient(
-    180deg,
-    rgba(255, 255, 255, 0.22),
-    rgba(255, 255, 255, 0) 50%
-  ),
-  linear-gradient(180deg, var(--wtm-accent), var(--wtm-accent-2));
-  box-shadow: var(--wtm-shadow-sm), inset 0 1px 0 rgba(255, 255, 255, 0.25);
-  transition: filter 0.15s, transform 0.06s;
+  background: linear-gradient(180deg, #6fc0f5, #2f8fe0 48%, #1f6fc0 52%, #3f93df);
+  text-shadow: 0 -1px 0 rgba(0, 0, 0, 0.2);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5),
+    0 1px 2px rgba(20, 60, 110, 0.3);
+  transition: filter 0.12s, transform 0.05s;
 }
 .wtm-btn:hover {
-  filter: brightness(1.1);
+  filter: brightness(1.07);
 }
 .wtm-btn:active {
   transform: translateY(1px);
@@ -497,7 +497,7 @@ button {
   cursor: not-allowed;
 }
 .wtm-error {
-  color: #f0a9a5;
+  color: #b53229;
   font-size: 12px;
   margin: 0 0 10px;
   min-height: 15px;
@@ -505,7 +505,7 @@ button {
 .wtm-hint {
   margin-top: 16px;
   padding-top: 14px;
-  border-top: 1px solid var(--wtm-border);
+  border-top: 1px solid #d6e0ec;
   font-size: 12px;
   color: var(--wtm-text-dim);
   line-height: 1.6;
@@ -513,9 +513,9 @@ button {
 .wtm-hint code {
   font-family: var(--wtm-mono);
   font-size: 11px;
-  color: var(--wtm-text);
-  background: var(--wtm-bg);
-  border: 1px solid var(--wtm-border);
+  color: #16324f;
+  background: #e8eff7;
+  border: 1px solid #c8d6e8;
   padding: 1px 5px;
   border-radius: 4px;
 }
@@ -525,13 +525,15 @@ button {
   padding: 0;
   margin-top: 10px;
   font-size: 12px;
-  color: var(--wtm-text-dim);
+  color: var(--wtm-accent-2);
 }
 .wtm-link:hover {
-  color: var(--wtm-text);
+  text-decoration: underline;
 }
 
-/* --- Taskbar (barra con relieve Aero) --- */
+/* =====================================================================
+   TASKBAR AERO (barra de cristal oscuro, orbe de inicio)
+   ===================================================================== */
 .wtm-taskbar {
   position: absolute;
   left: 0;
@@ -540,57 +542,62 @@ button {
   height: var(--wtm-taskbar-h);
   display: flex;
   align-items: center;
-  gap: 5px;
-  padding: 0 7px;
+  gap: 4px;
+  padding: 0 8px 0 4px;
   z-index: 1000;
-  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  border-top: 1px solid rgba(255, 255, 255, 0.35);
   background: linear-gradient(
     180deg,
-    rgba(255, 255, 255, 0.07),
-    rgba(255, 255, 255, 0) 45%
-  ),
-  linear-gradient(180deg, var(--wtm-surface-solid), var(--wtm-bg));
-  box-shadow: 0 -2px 12px rgba(0, 0, 0, 0.3);
-  backdrop-filter: blur(8px);
+    rgba(80, 120, 170, 0.55) 0%,
+    rgba(30, 55, 95, 0.78) 10%,
+    rgba(18, 36, 66, 0.86) 55%,
+    rgba(30, 55, 95, 0.8) 100%
+  );
+  box-shadow: 0 -1px 6px rgba(0, 0, 0, 0.35),
+    inset 0 1px 0 rgba(255, 255, 255, 0.18);
+  backdrop-filter: blur(12px);
 }
 .wtm-start {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 7px 13px;
+  height: 38px;
+  padding: 0 14px 0 10px;
   font-size: 13px;
   font-weight: 600;
-  color: var(--wtm-text);
-  border-radius: var(--wtm-radius);
-  border: 1px solid transparent;
+  color: #eaf3ff;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+  border: none;
+  border-radius: 6px;
   background: transparent;
-  transition: background 0.15s, border-color 0.15s;
+  transition: background 0.12s;
 }
 .wtm-start:hover {
-  background: var(--wtm-glass);
-  border-color: var(--wtm-border);
+  background: rgba(255, 255, 255, 0.12);
 }
 .wtm-start__dot {
-  width: 18px;
-  height: 18px;
-  border-radius: 4px;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
   display: grid;
   place-items: center;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
   color: #fff;
-  background: linear-gradient(
-    180deg,
-    rgba(255, 255, 255, 0.3),
-    rgba(255, 255, 255, 0) 50%
-  ),
-  linear-gradient(180deg, var(--wtm-accent), var(--wtm-accent-2));
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35);
+  background: radial-gradient(
+    circle at 50% 30%,
+    #bfe3ff 0%,
+    #4aa5ec 40%,
+    #1f6fc0 75%,
+    #15528f 100%
+  );
+  box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.8),
+    inset 0 -2px 3px rgba(0, 40, 90, 0.5), 0 0 5px rgba(90, 180, 255, 0.6);
 }
 .wtm-taskbar__sep {
   width: 1px;
-  height: 22px;
-  background: var(--wtm-border);
+  height: 26px;
+  background: rgba(255, 255, 255, 0.15);
   margin: 0 3px;
 }
 .wtm-taskbar__apps {
@@ -598,45 +605,45 @@ button {
   gap: 4px;
   flex: 1;
   overflow: hidden;
+  padding-left: 4px;
 }
 .wtm-taskbtn {
   display: flex;
   align-items: center;
   gap: 8px;
-  max-width: 180px;
-  padding: 6px 12px;
-  font-size: 12px;
-  color: var(--wtm-text-dim);
+  max-width: 190px;
+  height: 36px;
+  padding: 0 13px;
+  font-size: 12.5px;
+  color: #eaf3ff;
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.4);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  border-radius: var(--wtm-radius);
   border: 1px solid transparent;
+  border-radius: 5px;
   background: transparent;
-  transition: background 0.15s, color 0.15s, box-shadow 0.15s;
+  transition: background 0.12s, border-color 0.12s;
 }
 .wtm-taskbtn:hover {
-  background: var(--wtm-glass);
-  color: var(--wtm-text);
+  border-color: rgba(255, 255, 255, 0.25);
+  background: rgba(255, 255, 255, 0.14);
 }
 .wtm-taskbtn--active {
-  color: var(--wtm-text);
-  border-color: var(--wtm-border-strong);
+  border-color: rgba(255, 255, 255, 0.4);
   background: linear-gradient(
     180deg,
-    var(--wtm-sheen),
-    rgba(255, 255, 255, 0) 60%
-  ),
-  var(--wtm-surface);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08),
-    0 0 0 1px rgba(59, 130, 246, 0.2);
+    rgba(255, 255, 255, 0.32),
+    rgba(255, 255, 255, 0.12)
+  );
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.4);
 }
 .wtm-tray {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 5px;
   padding: 0 4px;
-  color: var(--wtm-text-dim);
+  color: #dceaf8;
   font-size: 12px;
 }
 .wtm-tray__btn {
@@ -644,97 +651,94 @@ button {
   height: 30px;
   display: grid;
   place-items: center;
-  color: var(--wtm-text-dim);
-  border-radius: var(--wtm-radius);
+  color: #dceaf8;
   border: 1px solid transparent;
+  border-radius: 5px;
   background: transparent;
-  transition: background 0.15s, color 0.15s;
+  transition: background 0.12s;
 }
 .wtm-tray__btn:hover {
-  background: var(--wtm-glass);
-  color: var(--wtm-text);
-  border-color: var(--wtm-border);
+  background: rgba(255, 255, 255, 0.14);
+  border-color: rgba(255, 255, 255, 0.25);
 }
 .wtm-tray__clock {
-  text-align: right;
-  line-height: 1.15;
+  text-align: center;
+  line-height: 1.2;
   font-variant-numeric: tabular-nums;
-  padding: 0 6px;
+  padding: 0 8px;
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.4);
 }
 .wtm-tray__user {
   display: flex;
   align-items: center;
   gap: 7px;
   padding: 4px 6px;
-  border-radius: var(--wtm-radius);
+  border-radius: 5px;
   cursor: pointer;
 }
 .wtm-tray__user:hover {
-  background: var(--wtm-glass);
+  background: rgba(255, 255, 255, 0.14);
 }
 .wtm-avatar {
-  width: 26px;
-  height: 26px;
-  border-radius: 5px;
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
   display: grid;
   place-items: center;
   font-size: 11px;
   font-weight: 600;
   color: #fff;
-  background: linear-gradient(
-    180deg,
-    rgba(255, 255, 255, 0.28),
-    rgba(255, 255, 255, 0) 50%
-  ),
-  linear-gradient(180deg, var(--wtm-accent), var(--wtm-accent-2));
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.3);
+  background: linear-gradient(180deg, #6fc0f5, #2f8fe0 50%, #1f6fc0);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5);
 }
 .wtm-company {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 5px 9px;
+  height: 34px;
+  padding: 0 10px;
   font-size: 12px;
-  color: var(--wtm-text);
-  border-radius: var(--wtm-radius);
-  border: 1px solid var(--wtm-border);
-  background: var(--wtm-glass);
+  color: #eaf3ff;
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.4);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 5px;
+  background: rgba(255, 255, 255, 0.1);
 }
 .wtm-company svg {
-  color: var(--wtm-text-dim);
+  color: #bcd6f2;
 }
 .wtm-company select {
   max-width: 150px;
   font-size: 12px;
-  color: var(--wtm-text);
+  color: #eaf3ff;
   background: transparent;
   border: none;
   outline: none;
 }
 .wtm-company select option {
-  background: var(--wtm-surface-solid);
+  background: #26456b;
+  color: #fff;
 }
 
-/* --- Menus flotantes (launcher, usuario, organizar) --- */
+/* --- Menus flotantes (Aero claro, borde de cristal) --- */
 .wtm-launcher,
 .wtm-menu {
   position: absolute;
   z-index: 1100;
-  border: 1px solid var(--wtm-border-strong);
-  border-radius: 10px;
+  border: 1px solid rgba(120, 160, 210, 0.7);
+  border-radius: 8px;
   background: linear-gradient(
     180deg,
-    var(--wtm-sheen),
-    rgba(255, 255, 255, 0) 30%
-  ),
-  linear-gradient(180deg, var(--wtm-surface-solid), var(--wtm-surface));
-  box-shadow: var(--wtm-shadow-lg), inset 0 1px 0 rgba(255, 255, 255, 0.07);
+    rgba(252, 253, 255, 0.98),
+    rgba(234, 242, 251, 0.97)
+  );
+  box-shadow: var(--wtm-shadow-lg), inset 0 1px 0 rgba(255, 255, 255, 1);
   backdrop-filter: blur(10px);
 }
 .wtm-launcher {
   left: 7px;
   bottom: calc(var(--wtm-taskbar-h) + 6px);
-  width: 460px;
+  width: 470px;
   max-width: calc(100vw - 20px);
   max-height: 74vh;
   padding: 10px;
@@ -742,26 +746,25 @@ button {
 }
 .wtm-launcher__search {
   width: 100%;
-  padding: 9px 12px;
+  padding: 8px 12px;
   margin-bottom: 8px;
   font-size: 13px;
-  color: var(--wtm-text);
-  border-radius: var(--wtm-radius);
-  border: 1px solid var(--wtm-border-strong);
-  background: var(--wtm-bg);
-  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.25);
+  border-radius: 5px;
+  border: 1px solid #99b0ce;
+  background: #fff;
+  box-shadow: inset 0 1px 2px rgba(40, 70, 110, 0.14);
   outline: none;
 }
 .wtm-launcher__search:focus {
-  border-color: var(--wtm-accent);
+  border-color: #4f9fe0;
 }
 .wtm-launcher h3 {
   margin: 10px 6px 6px;
   font-size: 11px;
-  font-weight: 600;
+  font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  color: var(--wtm-text-dim);
+  color: #3c5676;
 }
 .wtm-launcher__list {
   display: flex;
@@ -777,13 +780,13 @@ button {
   text-align: left;
   color: var(--wtm-text);
   border: 1px solid transparent;
-  border-radius: var(--wtm-radius);
+  border-radius: 5px;
   background: transparent;
-  transition: background 0.12s, border-color 0.12s;
+  transition: background 0.1s, border-color 0.1s;
 }
 .wtm-appitem:hover {
-  background: var(--wtm-glass);
-  border-color: var(--wtm-border);
+  border-color: #aecbe9;
+  background: linear-gradient(180deg, #f2f8ff, #e2eefb);
 }
 .wtm-appitem__glyph {
   width: 32px;
@@ -793,7 +796,7 @@ button {
   place-items: center;
   color: #fff;
   flex-shrink: 0;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.22), var(--wtm-shadow-sm);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.4), var(--wtm-shadow-sm);
 }
 .wtm-appitem__text {
   flex: 1;
@@ -801,7 +804,8 @@ button {
 }
 .wtm-appitem__name {
   font-size: 13px;
-  font-weight: 500;
+  font-weight: 600;
+  color: #1c3550;
 }
 .wtm-appitem__desc {
   font-size: 11px;
@@ -816,13 +820,13 @@ button {
   padding: 2px 7px;
   border-radius: 10px;
   color: var(--wtm-text-dim);
-  border: 1px solid var(--wtm-border);
-  background: var(--wtm-bg);
+  border: 1px solid #c2d2e6;
+  background: #eef3fa;
 }
 .wtm-menu {
   bottom: calc(var(--wtm-taskbar-h) + 6px);
   right: 7px;
-  width: 215px;
+  width: 220px;
   padding: 5px;
 }
 .wtm-menu--arrange {
@@ -835,7 +839,7 @@ button {
   line-height: 1.4;
 }
 .wtm-menu__head strong {
-  color: var(--wtm-text);
+  color: #16324f;
   font-weight: 600;
 }
 .wtm-menu__item {
@@ -844,17 +848,18 @@ button {
   padding: 8px 11px;
   font-size: 13px;
   color: var(--wtm-text);
-  border: none;
-  border-radius: var(--wtm-radius);
+  border: 1px solid transparent;
+  border-radius: 5px;
   background: transparent;
-  transition: background 0.12s;
+  transition: background 0.1s;
 }
 .wtm-menu__item:hover {
-  background: var(--wtm-glass);
+  border-color: #aecbe9;
+  background: linear-gradient(180deg, #f2f8ff, #e2eefb);
 }
 .wtm-menu__sep {
   height: 1px;
-  background: var(--wtm-border);
+  background: #d6e0ec;
   margin: 5px 3px;
 }
 
@@ -870,43 +875,44 @@ button {
   max-height: calc(100vh - var(--wtm-taskbar-h) - 28px);
 }
 .wtm-deskicon {
-  width: 88px;
+  width: 90px;
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 6px;
   padding: 10px 6px;
   text-align: center;
-  color: var(--wtm-text);
+  color: #fff;
   border: 1px solid transparent;
-  border-radius: var(--wtm-radius);
+  border-radius: 5px;
   background: transparent;
-  transition: background 0.12s, border-color 0.12s;
+  transition: background 0.1s, border-color 0.1s;
 }
 .wtm-deskicon:hover {
-  background: var(--wtm-glass);
-  border-color: var(--wtm-border);
+  background: rgba(255, 255, 255, 0.18);
+  border-color: rgba(255, 255, 255, 0.35);
 }
 .wtm-deskicon--selected {
-  background: rgba(59, 130, 246, 0.18);
-  border-color: var(--wtm-accent);
-  box-shadow: inset 0 0 0 1px rgba(59, 130, 246, 0.3);
+  background: rgba(130, 190, 250, 0.4);
+  border-color: rgba(255, 255, 255, 0.6);
 }
 .wtm-deskicon__glyph {
-  width: 42px;
-  height: 42px;
+  width: 44px;
+  height: 44px;
   border-radius: 9px;
   display: grid;
   place-items: center;
   color: #fff;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.25), var(--wtm-shadow-md);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.45), var(--wtm-shadow-md);
 }
 .wtm-deskicon__label {
   font-size: 11px;
-  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.7);
 }
 
-/* --- Ventanas (marco Aero) --- */
+/* =====================================================================
+   VENTANAS AERO (barra de cristal, botones Win7)
+   ===================================================================== */
 .wtm-window {
   position: absolute;
   display: flex;
@@ -914,82 +920,91 @@ button {
   min-width: 320px;
   min-height: 200px;
   overflow: hidden;
-  border: 1px solid var(--wtm-border-strong);
-  border-radius: 10px;
-  background: var(--wtm-surface-solid);
-  box-shadow: var(--wtm-shadow-lg), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(120, 160, 210, 0.85);
+  border-radius: 8px 8px 6px 6px;
+  background: #eef3f9;
+  box-shadow: var(--wtm-shadow-lg), 0 0 0 1px rgba(255, 255, 255, 0.5) inset;
 }
 .wtm-window--max {
   border-radius: 0;
   border: none;
 }
 .wtm-window__titlebar {
-  height: 36px;
+  height: 38px;
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 0 4px 0 11px;
+  padding: 0 6px 0 11px;
   cursor: move;
   user-select: none;
-  border-bottom: 1px solid var(--wtm-border);
+  border-bottom: 1px solid rgba(150, 180, 220, 0.5);
+  /* Cristal Aero de la barra de titulo. */
   background: linear-gradient(
     180deg,
-    rgba(255, 255, 255, 0.09),
-    rgba(255, 255, 255, 0) 55%
-  ),
-  linear-gradient(180deg, var(--wtm-surface), var(--wtm-surface-solid));
+    rgba(255, 255, 255, 0.9) 0%,
+    rgba(222, 236, 250, 0.82) 45%,
+    rgba(198, 222, 246, 0.8) 55%,
+    rgba(222, 236, 250, 0.85) 100%
+  );
 }
 .wtm-window__title {
   flex: 1;
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 12px;
-  font-weight: 500;
-  color: var(--wtm-text);
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #1a3350;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.7);
 }
 .wtm-window__title svg {
-  color: var(--wtm-text-dim);
+  color: #2f6fb0;
 }
 .wtm-window__badge {
   font-size: 10px;
   padding: 1px 7px;
   border-radius: 10px;
   color: var(--wtm-text-dim);
-  border: 1px solid var(--wtm-border);
-  background: var(--wtm-bg);
+  border: 1px solid #c2d2e6;
+  background: rgba(255, 255, 255, 0.7);
   font-weight: 400;
 }
 .wtm-window__controls {
   display: flex;
-  gap: 2px;
+  gap: 3px;
 }
 .wtm-wbtn {
-  width: 30px;
-  height: 26px;
+  width: 29px;
+  height: 22px;
   display: grid;
   place-items: center;
-  color: var(--wtm-text-dim);
-  border: 1px solid transparent;
-  border-radius: 6px;
-  background: transparent;
-  transition: background 0.12s, color 0.12s, border-color 0.12s;
+  color: #22425f;
+  border: 1px solid #a9c2e0;
+  border-radius: 4px;
+  background: linear-gradient(180deg, #fbfdff, #dde9f6 50%, #cfe0f2);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  transition: filter 0.1s, background 0.1s;
 }
 .wtm-wbtn:hover {
-  background: var(--wtm-glass);
-  border-color: var(--wtm-border);
-  color: var(--wtm-text);
+  filter: brightness(1.05);
+  background: linear-gradient(180deg, #ffffff, #e3eefb 50%, #d2e6fb);
+}
+.wtm-wbtn:active {
+  background: linear-gradient(180deg, #cfe2f5, #e2eefb);
+}
+.wtm-wbtn--close {
+  border-color: #c77;
+  background: linear-gradient(180deg, #f9b3ac, #e5665d 50%, #d94d44);
+  color: #fff;
 }
 .wtm-wbtn--close:hover {
-  color: #fff;
-  border-color: #b43b35;
-  background: linear-gradient(180deg, #e0564f, #c33f39);
+  background: linear-gradient(180deg, #ffc4bd, #ec7169 50%, #e05850);
 }
 .wtm-window__body {
   flex: 1;
   overflow: auto;
   position: relative;
-  background: var(--wtm-surface-solid);
+  background: #f4f7fb;
 }
 .wtm-window__resize {
   position: absolute;
@@ -1000,13 +1015,13 @@ button {
   cursor: nwse-resize;
 }
 
-/* --- Terminal --- */
+/* --- Terminal (mantiene fondo oscuro) --- */
 .wtm-term {
   height: 100%;
   display: flex;
   flex-direction: column;
-  background: #12141a;
-  color: #c8ccd4;
+  background: #10151c;
+  color: #c8d2dc;
   font-family: var(--wtm-mono);
   font-size: 12.5px;
   line-height: 1.55;
@@ -1029,7 +1044,7 @@ button {
   align-items: center;
   gap: 8px;
   padding: 8px 13px;
-  border-top: 1px solid rgba(255, 255, 255, 0.07);
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
 }
 .wtm-term__prompt span {
   color: #67e0a3;
@@ -1048,11 +1063,12 @@ button {
 .wtm-snap-preview {
   position: absolute;
   z-index: 9998;
-  border: 2px solid var(--wtm-accent);
-  background: rgba(59, 130, 246, 0.16);
+  border: 2px solid rgba(255, 255, 255, 0.8);
+  background: rgba(130, 190, 250, 0.35);
   border-radius: 8px;
   pointer-events: none;
-  box-shadow: inset 0 0 40px rgba(59, 130, 246, 0.2);
+  box-shadow: inset 0 0 40px rgba(90, 160, 230, 0.4),
+    0 0 20px rgba(90, 160, 230, 0.4);
   transition: left 0.08s, top 0.08s, width 0.08s, height 0.08s;
 }
 
@@ -1067,23 +1083,18 @@ button {
   color: var(--wtm-text);
   z-index: 2000;
   max-width: 80vw;
-  border: 1px solid var(--wtm-border-strong);
+  border: 1px solid rgba(120, 160, 210, 0.7);
   border-left: 3px solid var(--wtm-accent);
-  border-radius: var(--wtm-radius);
-  background: linear-gradient(
-    180deg,
-    var(--wtm-sheen),
-    rgba(255, 255, 255, 0) 60%
-  ),
-  var(--wtm-surface-solid);
+  border-radius: 6px;
+  background: linear-gradient(180deg, #ffffff, #eef3f9);
   box-shadow: var(--wtm-shadow-lg);
 }
 
-/* --- Progreso de actualizacion --- */
+/* --- Progreso --- */
 .wtm-progress {
   margin: 16px 0;
-  border: 1px solid var(--wtm-border);
-  border-radius: var(--wtm-radius);
+  border: 1px solid #cdd9e8;
+  border-radius: 6px;
   overflow: hidden;
 }
 .wtm-progress__phases {
@@ -1091,8 +1102,8 @@ button {
   gap: 6px;
   flex-wrap: wrap;
   padding: 12px 14px;
-  border-bottom: 1px solid var(--wtm-border);
-  background: var(--wtm-surface);
+  border-bottom: 1px solid #cdd9e8;
+  background: #eef3f9;
 }
 .wtm-phase {
   display: flex;
@@ -1102,16 +1113,17 @@ button {
   padding: 4px 10px;
   border-radius: 20px;
   color: var(--wtm-text-dim);
-  border: 1px solid var(--wtm-border);
+  border: 1px solid #c2d2e6;
+  background: #fff;
 }
 .wtm-phase__dot {
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: var(--wtm-text-dim);
+  background: #b4c2d4;
 }
 .wtm-phase--active {
-  color: var(--wtm-text);
+  color: var(--wtm-accent-2);
   border-color: var(--wtm-accent);
 }
 .wtm-phase--active .wtm-phase__dot {
@@ -1119,15 +1131,15 @@ button {
   animation: wtm-pulse 1s infinite;
 }
 .wtm-phase--done {
-  color: #67e0a3;
-  border-color: rgba(103, 224, 163, 0.35);
+  color: #2f7d4f;
+  border-color: #a9d8bc;
 }
 .wtm-phase--done .wtm-phase__dot {
-  background: #67e0a3;
+  background: #43a56a;
 }
 .wtm-phase--err {
-  color: #f08984;
-  border-color: rgba(240, 137, 132, 0.35);
+  color: #b53229;
+  border-color: #e6a9a4;
 }
 .wtm-phase--err .wtm-phase__dot {
   background: var(--wtm-danger);
@@ -1145,15 +1157,11 @@ button {
   max-height: 180px;
   overflow: auto;
   padding: 10px 14px;
-  background: #12141a;
+  background: #10151c;
   font-family: var(--wtm-mono);
   font-size: 12px;
   line-height: 1.6;
-}
-.wtm-progress__line {
-  color: #c8ccd4;
-  white-space: pre-wrap;
-  word-break: break-word;
+  color: #c8d2dc;
 }
 .wtm-progress__line--success {
   color: #67e0a3;
@@ -1162,157 +1170,96 @@ button {
   color: #f08984;
 }
 
-/* --- Compat: clases antiguas de modulos aun no migrados --- */
-.wtm-module {
-  padding: 0;
+/* =====================================================================
+   MODO OSCURO: cuando data-mode="dark", aplicamos acabados oscuros Aero.
+   (El usuario puede cambiar a oscuro desde Ajustes.)
+   ===================================================================== */
+[data-mode="dark"] .wtm-desktop,
+[data-mode="dark"] .wtm-login {
+  background: radial-gradient(
+    1400px 900px at 50% 120%,
+    #2a4466 0%,
+    #1a2740 55%,
+    #0f1826 100%
+  );
 }
-.wtm-module__head {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 16px 18px;
-  border-bottom: 1px solid var(--wtm-border);
+[data-mode="dark"] .ui-btn,
+[data-mode="dark"] .wtm-tool {
+  color: #e3e9f2;
+  border-color: #42586f;
+  background: linear-gradient(
+    180deg,
+    #3a4555 0%,
+    #2c3542 48%,
+    #242c38 52%,
+    #303a47 100%
+  );
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    0 1px 1px rgba(0, 0, 0, 0.3);
 }
-.wtm-module__icon {
-  width: 38px;
-  height: 38px;
-  border-radius: var(--wtm-radius);
-  display: grid;
-  place-items: center;
-  color: #fff;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.25), var(--wtm-shadow-sm);
+[data-mode="dark"] .ui-input,
+[data-mode="dark"] .wtm-input {
+  color: #e3e9f2;
+  border-color: #3f4b5c;
+  background: #1c232e;
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.4);
 }
-.wtm-module__title h2 {
-  margin: 0;
-  font-size: 15px;
-  font-weight: 600;
+[data-mode="dark"] .ui-card,
+[data-mode="dark"] .ui-table,
+[data-mode="dark"] .wtm-table {
+  background: #262d38;
+  border-color: #3a4451;
 }
-.wtm-module__title p {
-  margin: 1px 0 0;
-  font-size: 12px;
-  color: var(--wtm-text-dim);
+[data-mode="dark"] .ui-table th,
+[data-mode="dark"] .wtm-table th {
+  background: #2d3540;
+  color: #9fb0c4;
+  border-color: #3a4451;
 }
-.wtm-module__content {
-  padding: 18px;
+[data-mode="dark"] .ui-table td,
+[data-mode="dark"] .wtm-table td {
+  border-color: #333c48;
+  color: #e3e9f2;
 }
-.wtm-toolbar {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 10px 18px;
-  border-bottom: 1px solid var(--wtm-border);
-  background: var(--wtm-surface);
+[data-mode="dark"] .ui-module__head,
+[data-mode="dark"] .wtm-module__head,
+[data-mode="dark"] .ui-toolbar,
+[data-mode="dark"] .wtm-toolbar {
+  background: linear-gradient(180deg, #2b333f, #242b35);
+  border-color: #3a4451;
 }
-.wtm-tool {
-  padding: 6px 12px;
-  font-size: 12px;
-  color: var(--wtm-text);
-  border-radius: var(--wtm-radius);
-  border: 1px solid var(--wtm-border-strong);
-  background: linear-gradient(180deg, var(--wtm-surface-solid), var(--wtm-surface));
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
-  transition: filter 0.15s, border-color 0.15s;
+[data-mode="dark"] .ui-module__title h2,
+[data-mode="dark"] .wtm-module__title h2,
+[data-mode="dark"] .ui-card__value {
+  color: #eaf0f7;
 }
-.wtm-tool:hover {
-  border-color: var(--wtm-accent);
-  filter: brightness(1.1);
+[data-mode="dark"] .wtm-window {
+  background: #242b35;
+  border-color: #45515f;
 }
-.wtm-tool--primary {
-  color: #fff;
-  border-color: var(--wtm-accent-2);
-  background: linear-gradient(180deg, var(--wtm-accent), var(--wtm-accent-2));
+[data-mode="dark"] .wtm-window__titlebar {
+  background: linear-gradient(180deg, #333c49, #272e39);
+  border-color: #3a4451;
 }
-.wtm-chips {
-  display: flex;
-  gap: 6px;
-  margin-bottom: 14px;
-  flex-wrap: wrap;
+[data-mode="dark"] .wtm-window__title {
+  color: #e3e9f2;
+  text-shadow: none;
 }
-.wtm-chip {
-  font-size: 11px;
-  padding: 3px 9px;
-  border-radius: 20px;
-  color: var(--wtm-text-dim);
-  border: 1px solid var(--wtm-border);
-  background: var(--wtm-surface);
+[data-mode="dark"] .wtm-window__body {
+  background: #20262f;
 }
-.wtm-notice {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-top: 16px;
-  padding: 12px 14px;
-  font-size: 12px;
-  color: var(--wtm-text-dim);
-  border: 1px solid var(--wtm-border);
-  border-left: 3px solid var(--wtm-accent);
-  border-radius: var(--wtm-radius);
-  background: var(--wtm-surface);
+[data-mode="dark"] .wtm-launcher,
+[data-mode="dark"] .wtm-menu,
+[data-mode="dark"] .wtm-toast {
+  background: linear-gradient(180deg, #2b333f, #232a34);
+  border-color: #45515f;
+  color: #e3e9f2;
 }
-.wtm-cards {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-  gap: 12px;
+[data-mode="dark"] .wtm-appitem__name {
+  color: #eaf0f7;
 }
-.wtm-card {
-  padding: 15px;
-  border-radius: var(--wtm-radius);
-  border: 1px solid var(--wtm-border);
-  background: var(--wtm-surface);
-}
-.wtm-card__value {
-  font-size: 22px;
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
-}
-.wtm-card__label {
-  font-size: 12px;
-  color: var(--wtm-text-dim);
-  margin-top: 3px;
-}
-.wtm-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 12px;
-  margin-top: 14px;
-  border: 1px solid var(--wtm-border);
-  border-radius: var(--wtm-radius);
-  overflow: hidden;
-}
-.wtm-table th {
-  text-align: left;
-  padding: 9px 12px;
-  font-size: 11px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: var(--wtm-text-dim);
-  background: var(--wtm-surface);
-  border-bottom: 1px solid var(--wtm-border);
-}
-.wtm-table td {
-  padding: 9px 12px;
-  border-bottom: 1px solid var(--wtm-border);
-}
-.wtm-table tr:last-child td {
-  border-bottom: none;
-}
-.wtm-table tr:hover td {
-  background: var(--wtm-glass);
-}
-.wtm-tag {
-  font-size: 11px;
-  padding: 2px 8px;
-  border-radius: 10px;
-  color: var(--wtm-text-dim);
-  border: 1px solid var(--wtm-border);
-  background: var(--wtm-bg);
-}
-.wtm-tag--ok {
-  color: #67e0a3;
-  border-color: rgba(103, 224, 163, 0.35);
-}
-.wtm-tag--warn {
-  color: #f1c04f;
-  border-color: rgba(241, 192, 79, 0.35);
+[data-mode="dark"] .ui-notice,
+[data-mode="dark"] .wtm-notice {
+  background: #262d38;
+  border-color: #3a4451;
 }

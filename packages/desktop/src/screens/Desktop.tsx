@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { ModuleInfo } from "@wtm/shared";
 import { MODULE_CATEGORY_LABELS, type ModuleCategory } from "@wtm/shared";
 import { api } from "../lib/api";
@@ -198,6 +198,22 @@ export function Desktop() {
     wm.open(m);
   }
 
+  // Deteccion manual de doble clic (robusta en navegadores reales): el primer
+  // clic selecciona; un segundo clic dentro de 350ms abre el modulo.
+  const lastClick = useRef<{ id: string; at: number } | null>(null);
+  function handleIconClick(m: ModuleInfo) {
+    const now = Date.now();
+    const prev = lastClick.current;
+    if (prev && prev.id === m.id && now - prev.at < 350) {
+      lastClick.current = null;
+      setSelectedIcon(null);
+      openModule(m);
+    } else {
+      lastClick.current = { id: m.id, at: now };
+      setSelectedIcon(m.id);
+    }
+  }
+
   const initials = (user?.displayName ?? "?")
     .split(" ")
     .map((p) => p[0])
@@ -225,12 +241,7 @@ export function Desktop() {
             }`}
             onClick={(e) => {
               e.stopPropagation();
-              setSelectedIcon(m.id);
-            }}
-            onDoubleClick={(e) => {
-              e.stopPropagation();
-              setSelectedIcon(null);
-              openModule(m);
+              handleIconClick(m);
             }}
             title={`Abrir ${m.name}`}
           >
