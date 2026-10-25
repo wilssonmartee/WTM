@@ -1,5 +1,6 @@
 import type {
   ApiResponse,
+  Appearance,
   AuthSession,
   Company,
   CommitInfo,
@@ -111,6 +112,17 @@ export const api = {
     return request("/api/update/rollback", {
       method: "POST",
       body: JSON.stringify({ hash }),
+    });
+  },
+
+  // --- Apariencia (tema del sistema) ---
+  async getAppearance(): Promise<Appearance> {
+    return request("/api/appearance");
+  },
+  async setAppearance(partial: Partial<Appearance>): Promise<Appearance> {
+    return request("/api/appearance", {
+      method: "PUT",
+      body: JSON.stringify(partial),
     });
   },
 

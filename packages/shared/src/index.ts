@@ -167,6 +167,47 @@ export const DEFAULT_APPEARANCE: Appearance = {
   taskbarHeight: 44,
 };
 
+/** Presets de color para modo oscuro y claro. El acento se aplica aparte. */
+export const COLOR_PRESETS: Record<"dark" | "light", Appearance["colors"]> = {
+  dark: {
+    bg: "#1a1d23",
+    bg2: "#20242c",
+    surface: "#262b33",
+    surfaceSolid: "#2a2f38",
+    border: "#3a4049",
+    text: "#e3e6ec",
+    textDim: "#9aa2af",
+    accent: "#3b82f6",
+    accent2: "#2563eb",
+    danger: "#e0564f",
+  },
+  light: {
+    bg: "#eef1f5",
+    bg2: "#e4e8ee",
+    surface: "#f7f9fc",
+    surfaceSolid: "#ffffff",
+    border: "#d2d8e0",
+    text: "#1f2530",
+    textDim: "#5e6675",
+    accent: "#2f6fe0",
+    accent2: "#2258c0",
+    danger: "#d64840",
+  },
+};
+
+/** Opciones de color de acento (nombre + color base). */
+export const ACCENT_OPTIONS: { name: string; accent: string; accent2: string }[] =
+  [
+    { name: "Azul", accent: "#3b82f6", accent2: "#2563eb" },
+    { name: "Indigo", accent: "#6366f1", accent2: "#4f46e5" },
+    { name: "Verde", accent: "#10b981", accent2: "#059669" },
+    { name: "Teal", accent: "#14b8a6", accent2: "#0d9488" },
+    { name: "Ambar", accent: "#f59e0b", accent2: "#d97706" },
+    { name: "Rojo", accent: "#ef4444", accent2: "#dc2626" },
+    { name: "Rosa", accent: "#ec4899", accent2: "#db2777" },
+    { name: "Violeta", accent: "#8b5cf6", accent2: "#7c3aed" },
+  ];
+
 // ===================================================================
 //  Autoactualizacion por GitHub
 // ===================================================================
@@ -261,9 +302,24 @@ export interface SavedWindow {
   minimized: boolean;
 }
 
+/** Geometria recordada de un modulo (aunque este cerrado). */
+export interface SavedGeometry {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  maximized: boolean;
+}
+
 /** Layout del escritorio de un usuario (se guarda en el servidor). */
 export interface DesktopLayout {
+  /** Ventanas actualmente abiertas (para reabrirlas al entrar). */
   windows: SavedWindow[];
+  /**
+   * Ultima geometria por modulo, incluso si se cerro. Al reabrir un modulo
+   * se usa esta para restaurar tamano/posicion.
+   */
+  geometry?: Record<string, SavedGeometry>;
 }
 
 /** Fases de una operacion de actualizacion/reversion. */

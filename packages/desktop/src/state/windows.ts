@@ -1,5 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { DesktopLayout, ModuleInfo, ModuleManifest } from "@wtm/shared";
+import type {
+  DesktopLayout,
+  ModuleInfo,
+  ModuleManifest,
+  SavedGeometry,
+} from "@wtm/shared";
 import { api } from "../lib/api";
 
 export interface WinState {
@@ -129,6 +134,8 @@ export function useWindows(
   const starting = useRef(false); // restauracion iniciada
   const ready = useRef(false); // restauracion terminada -> ya se puede guardar
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Ultima geometria conocida por modulo (persiste aunque se cierre).
+  const geometry = useRef<Record<string, SavedGeometry>>({});
 
   // --- Restaurar del servidor al tener usuario + catalogo ---
   useEffect(() => {
@@ -138,6 +145,7 @@ export function useWindows(
     api
       .getLayout()
       .then((layout) => {
+        geometry.current = layout.geometry ?? {};
         const vw = window.innerWidth;
         const vh = window.innerHeight;
         const wins: WinState[] = [];
@@ -171,6 +179,32 @@ export function useWindows(
       });
   }, [userId, catalog]);
 
+  // Mantener la memoria de geometria por modulo al dia con las ventanas
+  // abiertas (sin maximizar, para recordar el tamano "normal").
+  useEffect(() => {
+    for (const w of windows) {
+      if (!w.maximized) {
+        geometry.current[w.module.id] = {
+          x: w.x,
+          y: w.y,
+          width: w.width,
+          height: w.height,
+          maximized: false,
+        };
+      } else {
+        // Recordamos que estaba maximizada, conservando el tamano previo.
+        const prev = geometry.current[w.module.id];
+        geometry.current[w.module.id] = {
+          x: prev?.x ?? w.x,
+          y: prev?.y ?? w.y,
+          width: prev?.width ?? w.width,
+          height: prev?.height ?? w.height,
+          maximized: true,
+        };
+      }
+    }
+  }, [windows]);
+
   // --- Guardar en el servidor en cada cambio (con debounce) ---
   useEffect(() => {
     if (!userId || !ready.current) return;
@@ -186,6 +220,7 @@ export function useWindows(
           maximized: w.maximized,
           minimized: w.minimized,
         })),
+        geometry: geometry.current,
       };
       api.saveLayout(layout).catch(() => {
         /* reintentara en el proximo cambio */
@@ -227,28 +262,50 @@ export function useWindows(
     );
   }, []);
 
-  const open = useCallback((module: ModuleManifest) => {
-    setWindows((ws) => {
-      const existing = ws.find((w) => w.module.id === module.id);
-      if (existing) {
-        return ws.map((w) =>
-          w.id === existing.id ? { ...w, z: ++topZ, minimized: false } : w,
-        );
-      }
-      const g = defaultGeom(module.id, ws.length);
-      return [
-        ...ws,
-        {
-          id: seq++,
-          module,
-          ...g,
-          z: ++topZ,
-          maximized: false,
-          minimized: false,
-        },
-      ];
-    });
-  }, []);
+  const open = useCallback(
+    (module: ModuleManifest) => {
+      setWindows((ws) => {
+        const existing = ws.find((w) => w.module.id === module.id);
+        if (existing) {
+          return ws.map((w) =>
+            w.id === existing.id ? { ...w, z: ++topZ, minimized: false } : w,
+          );
+        }
+
+        // Reabrir con la ultima geometria recordada del modulo (aunque se
+        // hubiera cerrado). Si quedaria fuera de pantalla, se centra.
+        const remembered = geometry.current[module.id];
+        let g;
+        if (remembered) {
+          const { w: W, h: H } = workArea(taskbarH);
+          let { x, y, width, height, maximized } = remembered;
+          width = Math.min(width, W);
+          height = Math.min(height, H);
+          const offscreen =
+            x < -width + 80 || x > W - 80 || y < 0 || y > H - 40;
+          if (offscreen) {
+            x = Math.max(0, Math.floor((W - width) / 2));
+            y = Math.max(0, Math.floor((H - height) / 2));
+          }
+          g = { x, y, width, height, maximized };
+        } else {
+          g = { ...defaultGeom(module.id, ws.length), maximized: false };
+        }
+
+        return [
+          ...ws,
+          {
+            id: seq++,
+            module,
+            ...g,
+            z: ++topZ,
+            minimized: false,
+          },
+        ];
+      });
+    },
+    [taskbarH],
+  );
 
   const close = useCallback((id: number) => {
     setWindows((ws) => ws.filter((w) => w.id !== id));

@@ -10,6 +10,7 @@ import { Terminal } from "../apps/Terminal";
 import { ModuleView } from "../apps/ModuleView";
 import { Inventario } from "../apps/Inventario";
 import { Actualizaciones } from "../apps/Actualizaciones";
+import { Ajustes } from "../apps/Ajustes";
 import { wsUrl, getServerUrl } from "../lib/config";
 import { getToken } from "../lib/api";
 import type { SnapZone } from "../state/windows";
@@ -174,10 +175,27 @@ export function Desktop() {
     ),
   );
 
-  function openModule(m: ModuleInfo) {
-    if (!canOpen(m)) return;
-    wm.open(m);
+  async function openModule(m: ModuleInfo) {
     setLauncherOpen(false);
+    // Modulo real no instalado: instalarlo al vuelo (si eres superadmin) y abrir.
+    if (!m.installed && m.status === "available") {
+      if (isSuperadmin) {
+        const updated = await api.installModule(m.id).catch(() => null);
+        if (updated) {
+          setModules(updated);
+          const fresh = updated.find((x) => x.id === m.id) ?? m;
+          wm.open(fresh);
+          setToast(`Modulo "${m.name}" instalado y abierto`);
+        } else {
+          setToast(`No se pudo instalar "${m.name}"`);
+        }
+      } else {
+        setToast(`"${m.name}" no esta instalado. Pide a un administrador que lo instale.`);
+      }
+      return;
+    }
+    // Coming-soon o ya instalado: abrir directo.
+    wm.open(m);
   }
 
   const initials = (user?.displayName ?? "?")
@@ -205,8 +223,12 @@ export function Desktop() {
             className={`wtm-deskicon ${
               selectedIcon === m.id ? "wtm-deskicon--selected" : ""
             }`}
-            onClick={() => setSelectedIcon(m.id)}
-            onDoubleClick={() => {
+            onClick={(e) => {
+              e.stopPropagation();
+              setSelectedIcon(m.id);
+            }}
+            onDoubleClick={(e) => {
+              e.stopPropagation();
               setSelectedIcon(null);
               openModule(m);
             }}
@@ -252,6 +274,8 @@ export function Desktop() {
               <Inventario module={w.module} />
             ) : w.module.id === "actualizaciones" ? (
               <Actualizaciones module={w.module} />
+            ) : w.module.id === "ajustes" ? (
+              <Ajustes module={w.module} />
             ) : (
               <ModuleView module={w.module} />
             )}

@@ -79,11 +79,11 @@ export const PLACEHOLDER_MODULES: ModuleManifest[] = [
     id: "ajustes",
     name: "Ajustes",
     version: "0.1.0",
-    description: "Usuarios, empresas, permisos y configuracion del sistema.",
+    description: "Apariencia, usuarios, empresas y configuracion del sistema.",
     icon: "settings",
     color: "#5b636e",
     dataScope: "shared",
-    status: "coming-soon",
+    status: "available",
     category: "sistema",
   },
   {
