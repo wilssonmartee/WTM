@@ -64,6 +64,16 @@ function migrate() {
       value TEXT NOT NULL
     );
 
+    -- Permisos de app: que usuario puede usar que modulo, en que empresa
+    -- (o en todas con company_id = '*'), y con que nivel (1-10).
+    CREATE TABLE IF NOT EXISTS permissions (
+      user_id    TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      module_id  TEXT NOT NULL,
+      company_id TEXT NOT NULL,   -- id de empresa o '*' (todas)
+      level      INTEGER NOT NULL DEFAULT 1,
+      PRIMARY KEY (user_id, module_id, company_id)
+    );
+
     -- Layout del escritorio por usuario (ventanas abiertas, tamano, posicion).
     -- Asi el usuario encuentra su escritorio igual desde cualquier dispositivo.
     CREATE TABLE IF NOT EXISTS user_layouts (
@@ -140,6 +150,14 @@ function seed() {
     now,
   );
   insMember.run(juanId, companyA, "member");
+
+  // Permisos demo de juan: Inventario en todas las empresas (nivel 3) y
+  // Facturacion solo en Empresa A (nivel 1), para ilustrar el modelo.
+  const insPerm = db.prepare(
+    "INSERT INTO permissions (user_id, module_id, company_id, level) VALUES (?, ?, ?, ?)",
+  );
+  insPerm.run(juanId, "inventario", "*", 3);
+  insPerm.run(juanId, "facturacion", companyA, 1);
 
   console.log("[db] Datos iniciales creados.");
   console.log(`[db] Superadmin: ${config.seedAdminUser} / ${config.seedAdminPassword}`);

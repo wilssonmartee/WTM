@@ -1,11 +1,14 @@
 import type {
+  AdminUser,
   ApiResponse,
   Appearance,
   AuthSession,
   Company,
   CommitInfo,
   DesktopLayout,
+  EffectivePermissions,
   ModuleInfo,
+  Permission,
   UpdateConfig,
   UpdateLogEntry,
   UpdateStatus,
@@ -61,8 +64,81 @@ export const api = {
     setToken(data.token);
     return data;
   },
-  async me(): Promise<{ user: User; companies: Company[] }> {
+  async me(): Promise<{
+    user: User;
+    companies: Company[];
+    permissions: EffectivePermissions;
+  }> {
     return request("/api/auth/me");
+  },
+
+  // --- Administracion: empresas ---
+  async listCompanies(): Promise<Company[]> {
+    return request("/api/companies");
+  },
+  async createCompany(name: string): Promise<Company> {
+    return request("/api/companies", {
+      method: "POST",
+      body: JSON.stringify({ name }),
+    });
+  },
+  async updateCompany(id: string, name: string): Promise<Company> {
+    return request(`/api/companies/${id}`, {
+      method: "PUT",
+      body: JSON.stringify({ name }),
+    });
+  },
+  async deleteCompany(id: string): Promise<Company[]> {
+    return request(`/api/companies/${id}`, { method: "DELETE" });
+  },
+
+  // --- Administracion: usuarios ---
+  async listUsers(): Promise<AdminUser[]> {
+    return request("/api/users");
+  },
+  async createUser(input: {
+    username: string;
+    displayName: string;
+    email?: string | null;
+    password: string;
+    globalRole?: User["globalRole"];
+  }): Promise<User> {
+    return request("/api/users", {
+      method: "POST",
+      body: JSON.stringify(input),
+    });
+  },
+  async updateUser(
+    id: string,
+    input: {
+      displayName?: string;
+      email?: string | null;
+      password?: string;
+      globalRole?: User["globalRole"];
+    },
+  ): Promise<User> {
+    return request(`/api/users/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(input),
+    });
+  },
+  async deleteUser(id: string): Promise<{ id: string }> {
+    return request(`/api/users/${id}`, { method: "DELETE" });
+  },
+  async setMemberships(id: string, companyIds: string[]): Promise<string[]> {
+    return request(`/api/users/${id}/memberships`, {
+      method: "PUT",
+      body: JSON.stringify({ companyIds }),
+    });
+  },
+  async setPermissions(
+    id: string,
+    permissions: Permission[],
+  ): Promise<Permission[]> {
+    return request(`/api/users/${id}/permissions`, {
+      method: "PUT",
+      body: JSON.stringify({ permissions }),
+    });
   },
   async modules(): Promise<ModuleInfo[]> {
     return request("/api/modules");

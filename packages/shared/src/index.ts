@@ -31,11 +31,76 @@ export interface Membership {
   role: "owner" | "manager" | "member";
 }
 
+/** Comodin que representa "todas las empresas" (incluidas las futuras). */
+export const ALL_COMPANIES = "*";
+
+/** Nivel de autoridad dentro de una app: 1 (mas bajo) a 10 (mas alto). */
+export type AppLevel = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10;
+
+/**
+ * Permiso de un usuario sobre una app, en una empresa concreta o en todas.
+ * El nivel gobierna que puede ver/hacer dentro del modulo (los campos del
+ * modulo condicionan su visibilidad por nivel).
+ */
+export interface Permission {
+  userId: string;
+  moduleId: string;
+  /** Id de empresa, o ALL_COMPANIES ("*") para todas. */
+  companyId: string;
+  level: AppLevel;
+}
+
+/**
+ * Permisos efectivos del usuario autenticado, para que el cliente sepa que
+ * puede abrir y con que nivel en cada empresa. Mapa:
+ *   moduleId -> { companyId|"*": level }
+ */
+export type EffectivePermissions = Record<string, Record<string, AppLevel>>;
+
+/** Usuario tal como lo ve el panel de administracion (con membresias y permisos). */
+export interface AdminUser extends User {
+  companyIds: string[];
+  permissions: Permission[];
+}
+
 /** Usuario autenticado tal como lo consume el cliente. */
 export interface AuthSession {
   token: string;
   user: User;
   companies: Company[];
+  permissions: EffectivePermissions;
+}
+
+/**
+ * Resuelve el nivel efectivo de un usuario para un modulo en una empresa.
+ * Devuelve 0 si no tiene acceso. Un permiso para la empresa concreta gana
+ * sobre el comodin; si solo existe el comodin, ese aplica.
+ */
+export function resolveLevel(
+  perms: EffectivePermissions,
+  moduleId: string,
+  companyId: string | null,
+): number {
+  // Comodin de modulo "*" = acceso total (admin/superadmin).
+  const wildModule = perms["*"];
+  if (wildModule && wildModule[ALL_COMPANIES] != null) {
+    return wildModule[ALL_COMPANIES];
+  }
+  const forModule = perms[moduleId];
+  if (!forModule) return 0;
+  if (companyId && forModule[companyId] != null) return forModule[companyId];
+  if (forModule[ALL_COMPANIES] != null) return forModule[ALL_COMPANIES];
+  return 0;
+}
+
+/** Atajo: el usuario tiene al menos el nivel n para el modulo en la empresa. */
+export function hasLevel(
+  perms: EffectivePermissions,
+  moduleId: string,
+  companyId: string | null,
+  n: number,
+): boolean {
+  return resolveLevel(perms, moduleId, companyId) >= n;
 }
 
 /** Estrategia de datos que declara un modulo. */
@@ -63,6 +128,11 @@ export interface ModuleManifest {
   category: ModuleCategory;
   /** Ids de otros modulos que este requiere para funcionar. */
   dependencies?: string[];
+  /**
+   * Nivel minimo (1-10) para abrir la app. Por defecto 1: basta con tener un
+   * permiso. Un modulo sensible puede exigir mas para abrirse siquiera.
+   */
+  minLevel?: AppLevel;
 }
 
 /** Manifiesto + estado de instalacion, tal como lo ve el cliente. */

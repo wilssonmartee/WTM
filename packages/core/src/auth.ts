@@ -4,6 +4,7 @@ import { config } from "./config.js";
 import { db } from "./db.js";
 import { verifyPassword } from "./crypto.js";
 import type { AuthSession, Company, User } from "@wtm/shared";
+import { effectivePermissions, levelFor } from "./admin.js";
 
 interface UserRow {
   id: string;
@@ -66,7 +67,12 @@ export function login(username: string, password: string): AuthSession | null {
   const token = jwt.sign({ sub: user.id }, config.jwtSecret, {
     expiresIn: "7d",
   });
-  return { token, user, companies: companiesForUser(user.id) };
+  return {
+    token,
+    user,
+    companies: companiesForUser(user.id),
+    permissions: effectivePermissions(user),
+  };
 }
 
 export function getUserById(id: string): User | null {
@@ -146,6 +152,27 @@ export function withCompany(required: boolean) {
       return;
     }
     req.companyId = companyId;
+    next();
+  };
+}
+
+/**
+ * Middleware que exige al usuario un nivel minimo en un modulo para la empresa
+ * activa. Lo usan los routers de los modulos. Expone req.level al handler.
+ */
+export interface LeveledRequest extends AuthedRequest {
+  level?: number;
+}
+export function requireLevel(moduleId: string, min: number) {
+  return (req: LeveledRequest, res: Response, next: NextFunction) => {
+    const level = levelFor(req.user!, moduleId, req.companyId ?? null);
+    if (level < min) {
+      res
+        .status(403)
+        .json({ ok: false, error: "Sin permiso para esta app o empresa" });
+      return;
+    }
+    req.level = level;
     next();
   };
 }

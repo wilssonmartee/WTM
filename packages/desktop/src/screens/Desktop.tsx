@@ -37,6 +37,7 @@ export function Desktop() {
     setActiveCompany,
     logout,
     appearance,
+    levelFor,
   } = useAuth();
   const [modules, setModules] = useState<ModuleInfo[]>([]);
   const [launcherOpen, setLauncherOpen] = useState(false);
@@ -50,7 +51,6 @@ export function Desktop() {
   const [toast, setToast] = useState<string | null>(null);
   const taskbarH = appearance.taskbarHeight;
   const wm = useWindows(user?.id ?? null, modules, taskbarH);
-  const isSuperadmin = user?.globalRole === "superadmin";
 
   useEffect(() => {
     api.modules().then(setModules).catch(() => {});
@@ -68,21 +68,28 @@ export function Desktop() {
     }
   }
 
-  async function uninstallModule(id: string) {
-    setBusy(id);
-    try {
-      setModules(await api.uninstallModule(id));
-      setToast(`Modulo "${id}" desinstalado`);
-    } catch (e) {
-      setToast(e instanceof Error ? e.message : "Error al desinstalar");
-    } finally {
-      setBusy(null);
-    }
+  const isAdmin =
+    user?.globalRole === "superadmin" || user?.globalRole === "admin";
+
+  /**
+   * Un usuario PUEDE VER una app si:
+   *  - es admin (ve todo), o
+   *  - los modulos de sistema requieren admin, o
+   *  - para un modulo de negocio, tiene permiso (nivel >= minLevel) en la
+   *    empresa activa.
+   * Las vistas previas (coming-soon) solo las ve el admin.
+   */
+  function canSee(m: ModuleInfo): boolean {
+    if (isAdmin) return true;
+    if (m.category === "sistema") return false; // terminal/ajustes/updates: admin
+    if (m.status === "coming-soon") return false;
+    const min = m.minLevel ?? 1;
+    return levelFor(m.id) >= min;
   }
 
-  /** Un modulo es "abrible" si esta instalado o es un placeholder visual. */
+  /** Abrible = visible y (instalado o vista previa). */
   function canOpen(m: ModuleInfo): boolean {
-    return m.installed || m.status === "coming-soon";
+    return canSee(m) && (m.installed || m.status === "coming-soon");
   }
 
   useEffect(() => {
@@ -200,17 +207,23 @@ export function Desktop() {
   }, [modules]);
 
   // Iconos destacados en el escritorio.
-  const deskIcons = modules.filter((m) =>
-    ["terminal", "facturacion", "inventario", "contabilidad", "ajustes"].includes(
-      m.id,
-    ),
+  const deskIcons = modules.filter(
+    (m) =>
+      ["terminal", "facturacion", "inventario", "contabilidad", "ajustes"].includes(
+        m.id,
+      ) && canSee(m),
   );
 
   async function openModule(m: ModuleInfo) {
     setLauncherOpen(false);
-    // Modulo real no instalado: instalarlo al vuelo (si eres superadmin) y abrir.
+    // Si no puede verlo, no abrir.
+    if (!canSee(m)) {
+      setToast(`No tienes permiso para "${m.name}"`);
+      return;
+    }
+    // Modulo real no instalado: instalarlo al vuelo (si eres admin) y abrir.
     if (!m.installed && m.status === "available") {
-      if (isSuperadmin) {
+      if (isAdmin) {
         const updated = await api.installModule(m.id).catch(() => null);
         if (updated) {
           setModules(updated);
@@ -383,8 +396,11 @@ export function Desktop() {
             autoFocus
           />
           {[...grouped.entries()].map(([cat, mods]) => {
-            const filtered = mods.filter((m) =>
-              m.name.toLowerCase().includes(search.toLowerCase()),
+            const filtered = mods.filter(
+              (m) =>
+                // Solo apps que el usuario puede ver (admin ve todo).
+                (canSee(m) || (isAdmin && m.status === "available")) &&
+                m.name.toLowerCase().includes(search.toLowerCase()),
             );
             if (filtered.length === 0) return null;
             return (
@@ -392,14 +408,10 @@ export function Desktop() {
                 <h3>{MODULE_CATEGORY_LABELS[cat]}</h3>
                 <div className="wtm-launcher__list">
                   {filtered.map((m) => {
-                    // Un modulo real no instalado se puede instalar; los
-                    // "coming-soon" se abren como vista previa.
+                    // Un modulo real no instalado se puede instalar desde aqui
+                    // (gestion completa en Ajustes > Modulos).
                     const installable =
                       m.status === "available" && !m.installed;
-                    const removable =
-                      m.status === "available" &&
-                      m.installed &&
-                      m.category !== "sistema";
                     return (
                       <div
                         key={m.id}
@@ -444,7 +456,7 @@ export function Desktop() {
                             {m.description}
                           </div>
                         </span>
-                        {installable && isSuperadmin && (
+                        {installable && isAdmin && (
                           <button
                             className="wtm-tool wtm-tool--primary"
                             style={{ padding: "3px 10px" }}
@@ -455,24 +467,6 @@ export function Desktop() {
                             }}
                           >
                             {busy === m.id ? "..." : "Instalar"}
-                          </button>
-                        )}
-                        {installable && !isSuperadmin && (
-                          <span className="wtm-appitem__badge">
-                            no instalado
-                          </span>
-                        )}
-                        {removable && isSuperadmin && (
-                          <button
-                            className="wtm-tool"
-                            style={{ padding: "3px 10px" }}
-                            disabled={busy === m.id}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              uninstallModule(m.id);
-                            }}
-                          >
-                            Quitar
                           </button>
                         )}
                         {m.status === "coming-soon" && (

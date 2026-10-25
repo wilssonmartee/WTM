@@ -24,6 +24,7 @@ import {
   moduleDispatcher,
 } from "./modules/registry.js";
 import * as updater from "./updater/service.js";
+import * as admin from "./admin.js";
 import { WTM_VERSION } from "@wtm/shared";
 
 initDb();
@@ -58,8 +59,116 @@ app.get("/api/auth/me", requireAuth, (req: AuthedRequest, res) => {
   const user = req.user!;
   res.json({
     ok: true,
-    data: { user, companies: companiesForUser(user.id) },
+    data: {
+      user,
+      companies: companiesForUser(user.id),
+      permissions: admin.effectivePermissions(user),
+    },
   });
+});
+
+// ============================================================
+//  Administracion: empresas, usuarios, permisos (solo admin)
+// ============================================================
+function requireAdmin(req: AuthedRequest, res: Response): boolean {
+  const role = req.user!.globalRole;
+  if (role !== "superadmin" && role !== "admin") {
+    res.status(403).json({ ok: false, error: "Requiere administrador" });
+    return false;
+  }
+  return true;
+}
+
+// --- Empresas ---
+app.get("/api/companies", requireAuth, (req: AuthedRequest, res) => {
+  if (!requireAdmin(req, res)) return;
+  res.json({ ok: true, data: admin.listCompanies() });
+});
+app.post("/api/companies", requireAuth, (req: AuthedRequest, res) => {
+  if (!requireAdmin(req, res)) return;
+  const name = (req.body?.name ?? "").toString().trim();
+  if (!name) {
+    res.status(400).json({ ok: false, error: "El nombre es obligatorio" });
+    return;
+  }
+  res.json({ ok: true, data: admin.createCompany(name) });
+});
+app.put("/api/companies/:id", requireAuth, (req: AuthedRequest, res) => {
+  if (!requireAdmin(req, res)) return;
+  const c = admin.updateCompany(req.params.id, (req.body?.name ?? "").toString());
+  if (!c) {
+    res.status(404).json({ ok: false, error: "Empresa no encontrada" });
+    return;
+  }
+  res.json({ ok: true, data: c });
+});
+app.delete("/api/companies/:id", requireAuth, (req: AuthedRequest, res) => {
+  if (!requireAdmin(req, res)) return;
+  admin.deleteCompany(req.params.id);
+  res.json({ ok: true, data: admin.listCompanies() });
+});
+
+// --- Usuarios ---
+app.get("/api/users", requireAuth, (req: AuthedRequest, res) => {
+  if (!requireAdmin(req, res)) return;
+  const users = admin.listUsers().map((u) => ({
+    ...u,
+    companyIds: admin.getMemberships(u.id),
+    permissions: admin.getPermissions(u.id),
+  }));
+  res.json({ ok: true, data: users });
+});
+app.post("/api/users", requireAuth, (req: AuthedRequest, res) => {
+  if (!requireAdmin(req, res)) return;
+  const r = admin.createUser(req.body ?? {});
+  if (!r.ok) {
+    res.status(400).json({ ok: false, error: r.error });
+    return;
+  }
+  res.json({ ok: true, data: r.user });
+});
+app.put("/api/users/:id", requireAuth, (req: AuthedRequest, res) => {
+  if (!requireAdmin(req, res)) return;
+  const r = admin.updateUser(req.params.id, req.body ?? {});
+  if (!r.ok) {
+    res.status(400).json({ ok: false, error: r.error });
+    return;
+  }
+  res.json({ ok: true, data: r.user });
+});
+app.delete("/api/users/:id", requireAuth, (req: AuthedRequest, res) => {
+  if (!requireAdmin(req, res)) return;
+  const r = admin.deleteUser(req.params.id, req.user!.id);
+  if (!r.ok) {
+    res.status(400).json({ ok: false, error: r.error });
+    return;
+  }
+  res.json({ ok: true, data: { id: req.params.id } });
+});
+
+// --- Membresias y permisos de un usuario ---
+app.put("/api/users/:id/memberships", requireAuth, (req: AuthedRequest, res) => {
+  if (!requireAdmin(req, res)) return;
+  const ids = Array.isArray(req.body?.companyIds) ? req.body.companyIds : [];
+  admin.setMemberships(req.params.id, ids);
+  res.json({ ok: true, data: admin.getMemberships(req.params.id) });
+});
+app.put("/api/users/:id/permissions", requireAuth, (req: AuthedRequest, res) => {
+  if (!requireAdmin(req, res)) return;
+  const perms = Array.isArray(req.body?.permissions)
+    ? req.body.permissions
+    : [];
+  // Forzar que el userId sea el de la ruta.
+  admin.setPermissions(
+    req.params.id,
+    perms.map((p: { moduleId: string; companyId: string; level: number }) => ({
+      userId: req.params.id,
+      moduleId: p.moduleId,
+      companyId: p.companyId,
+      level: p.level,
+    })),
+  );
+  res.json({ ok: true, data: admin.getPermissions(req.params.id) });
 });
 
 // --- Layout del escritorio por usuario (ventanas abiertas) ---

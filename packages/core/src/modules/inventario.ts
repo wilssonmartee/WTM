@@ -1,7 +1,7 @@
 import { Router } from "express";
 import type { WtmModule, ModuleContext } from "./types.js";
 import type { AuthedRequest } from "../auth.js";
-import { requireAuth, withCompany } from "../auth.js";
+import { requireAuth, withCompany, requireLevel } from "../auth.js";
 import { newId } from "../crypto.js";
 
 /**
@@ -71,7 +71,8 @@ export const inventarioModule: WtmModule = {
   createRouter(ctx: ModuleContext): Router {
     const router = Router();
     // Inventario es compartido: la empresa es opcional (no filtra datos).
-    router.use(requireAuth, withCompany(false));
+    // requireLevel("inventario", 1): hace falta al menos un permiso (nivel 1).
+    router.use(requireAuth, withCompany(false), requireLevel("inventario", 1));
 
     // Listar productos.
     router.get("/products", (_req, res) => {

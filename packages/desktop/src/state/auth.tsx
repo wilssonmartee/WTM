@@ -5,8 +5,13 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import type { Appearance, Company, User } from "@wtm/shared";
-import { DEFAULT_APPEARANCE } from "@wtm/shared";
+import type {
+  Appearance,
+  Company,
+  EffectivePermissions,
+  User,
+} from "@wtm/shared";
+import { DEFAULT_APPEARANCE, resolveLevel } from "@wtm/shared";
 import {
   api,
   getToken,
@@ -19,12 +24,16 @@ interface AuthState {
   user: User | null;
   companies: Company[];
   activeCompanyId: string | null;
+  permissions: EffectivePermissions;
   appearance: Appearance;
   loading: boolean;
   login: (u: string, p: string) => Promise<void>;
   logout: () => void;
   setActiveCompany: (id: string) => void;
   refreshAppearance: () => Promise<void>;
+  refreshSession: () => Promise<void>;
+  /** Nivel del usuario para un modulo en la empresa activa (0 = sin acceso). */
+  levelFor: (moduleId: string) => number;
 }
 
 const AuthContext = createContext<AuthState | null>(null);
@@ -33,6 +42,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [companies, setCompanies] = useState<Company[]>([]);
   const [activeCompanyId, setActiveCompanyId] = useState<string | null>(null);
+  const [permissions, setPermissions] = useState<EffectivePermissions>({});
   const [appearance, setAppearance] = useState<Appearance>(DEFAULT_APPEARANCE);
   const [loading, setLoading] = useState(true);
 
@@ -75,6 +85,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setUser(data.user);
         setCompanies(data.companies);
         setActiveCompanyId(data.companies[0]?.id ?? null);
+        setPermissions(data.permissions ?? {});
       })
       .catch(() => setToken(null))
       .finally(() => setLoading(false));
@@ -85,8 +96,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(session.user);
     setCompanies(session.companies);
     setActiveCompanyId(session.companies[0]?.id ?? null);
-    // Tras autenticar, recargamos la apariencia (por si el servidor cambio).
+    setPermissions(session.permissions ?? {});
     await refreshAppearance();
+  }
+
+  /** Recarga usuario, empresas y permisos (p.ej. tras cambios del admin). */
+  async function refreshSession() {
+    try {
+      const data = await api.me();
+      setUser(data.user);
+      setCompanies(data.companies);
+      setPermissions(data.permissions ?? {});
+      setActiveCompanyId((cur) =>
+        cur && data.companies.some((c) => c.id === cur)
+          ? cur
+          : (data.companies[0]?.id ?? null),
+      );
+    } catch {
+      /* ignore */
+    }
   }
 
   async function refreshAppearance() {
@@ -95,11 +123,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     applyAppearance(a);
   }
 
+  function levelFor(moduleId: string): number {
+    return resolveLevel(permissions, moduleId, activeCompanyId);
+  }
+
   function logout() {
     setToken(null);
     setUser(null);
     setCompanies([]);
     setActiveCompanyId(null);
+    setPermissions({});
   }
 
   return (
@@ -108,11 +141,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         user,
         companies,
         activeCompanyId,
+        permissions,
         appearance,
         loading,
         login,
         logout,
         setActiveCompany: setActiveCompanyId,
+        refreshSession,
+        levelFor,
         refreshAppearance,
       }}
     >
