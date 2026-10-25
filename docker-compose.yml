@@ -1,17 +1,34 @@
+# WTM - orquestacion con Docker Compose.
+#
+# Un solo comando lo levanta todo:  docker compose up -d --build
+#
+# Puertos: por defecto el sistema usa 4000 (y reservamos 4001, 4002 para
+# futuros servicios). Puedes cambiarlos con variables de entorno o un .env:
+#   WTM_PORT=4000
+#
+# Compatible con Docker y con Podman (podman-compose).
+
 services:
   wtm:
     build: .
-    container_name: wtm-core
+    image: wtm:latest
+    container_name: wtm
     ports:
-      - "4000:4000"
+      - "${WTM_PORT:-4000}:4000"
+      # Reservados para futuros servicios del sistema:
+      # - "${WTM_PORT_2:-4001}:4001"
+      # - "${WTM_PORT_3:-4002}:4002"
     volumes:
+      # Datos persistentes (base de datos SQLite, logs, config).
       - wtm-data:/data
     environment:
-      # Cambia el secreto JWT en produccion.
-      WTM_JWT_SECRET: "cambia-este-secreto-en-produccion"
-      # Cambia la contrasena del admin inicial.
-      WTM_ADMIN_USER: "admin"
-      WTM_ADMIN_PASSWORD: "admin"
+      WTM_PORT: 4000
+      WTM_DATA_DIR: /data
+      WTM_REPO_ROOT: /app
+      # Cambia estos valores en produccion:
+      WTM_JWT_SECRET: "${WTM_JWT_SECRET:-cambia-este-secreto}"
+      WTM_ADMIN_USER: "${WTM_ADMIN_USER:-admin}"
+      WTM_ADMIN_PASSWORD: "${WTM_ADMIN_PASSWORD:-admin}"
     restart: unless-stopped
 
 volumes:

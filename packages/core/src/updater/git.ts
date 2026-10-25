@@ -1,17 +1,44 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import path from "node:path";
+import fs from "node:fs";
 import { fileURLToPath } from "node:url";
 import type { CommitInfo } from "@wtm/shared";
 
 const execFileAsync = promisify(execFile);
 
 /**
- * Raiz del repositorio = raiz del proyecto WTM.
- * dist del core esta en packages/core/dist, subimos 3 niveles.
+ * Raiz del proyecto WTM. Se puede fijar con WTM_REPO_ROOT (util en el
+ * contenedor). Si no, buscamos hacia arriba una carpeta que tenga un
+ * package.json con "workspaces" (la raiz del monorepo), lo que funciona tanto
+ * si el core corre desde src (tsx) como bundlado en dist.
  */
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-export const REPO_ROOT = path.resolve(__dirname, "..", "..", "..", "..");
+function resolveRepoRoot(): string {
+  if (process.env.WTM_REPO_ROOT) return process.env.WTM_REPO_ROOT;
+  let dir = path.dirname(fileURLToPath(import.meta.url));
+  for (let i = 0; i < 8; i++) {
+    const pkg = path.join(dir, "package.json");
+    if (fs.existsSync(pkg)) {
+      try {
+        const json = JSON.parse(fs.readFileSync(pkg, "utf8"));
+        if (json.workspaces) return dir;
+      } catch {
+        /* seguir subiendo */
+      }
+    }
+    const parent = path.dirname(dir);
+    if (parent === dir) break;
+    dir = parent;
+  }
+  return path.resolve(
+    path.dirname(fileURLToPath(import.meta.url)),
+    "..",
+    "..",
+    "..",
+  );
+}
+
+export const REPO_ROOT = resolveRepoRoot();
 
 /** Ejecuta un comando git en la raiz del repo. Lanza si falla. */
 async function git(args: string[]): Promise<string> {
@@ -75,21 +102,43 @@ export async function history(limit = 50): Promise<CommitInfo[]> {
   }
 }
 
+function remoteUrl(repo: string, token: string | null): string {
+  return token
+    ? `https://${token}@github.com/${repo}.git`
+    : `https://github.com/${repo}.git`;
+}
+
 /** Configura el remoto 'origin' con el repo/token dados. */
 export async function setRemote(
   repo: string,
   token: string | null,
 ): Promise<void> {
-  // Construimos la URL. Con token para repos privados.
-  const url = token
-    ? `https://${token}@github.com/${repo}.git`
-    : `https://github.com/${repo}.git`;
+  const url = remoteUrl(repo, token);
   // Si ya existe origin lo actualizamos, si no lo agregamos.
   try {
     await git(["remote", "set-url", "origin", url]);
   } catch {
     await git(["remote", "add", "origin", url]);
   }
+}
+
+/**
+ * Inicializa un repo git en REPO_ROOT si aun no lo es, y lo vincula al remoto.
+ * Util en el contenedor (que no trae .git) o en una instalacion desde cero:
+ * al configurar el repositorio por primera vez, se crea el vinculo con GitHub.
+ */
+export async function initRepo(
+  repo: string,
+  branch: string,
+  token: string | null,
+): Promise<void> {
+  if (!(await isGitRepo())) {
+    await git(["init"]);
+    await git(["symbolic-ref", "HEAD", `refs/heads/${branch}`]).catch(
+      () => {},
+    );
+  }
+  await setRemote(repo, token);
 }
 
 /** Trae el remoto sin aplicar nada. */

@@ -76,7 +76,18 @@ export function setConfig(
   // El token se guarda/borra por separado.
   if (token !== undefined) setToken(token);
 
-  return getConfig();
+  // Si se configuro un repo, vincular git (init si hace falta) en segundo
+  // plano. No bloquea el guardado ni rompe si git no esta disponible.
+  const cfg = getConfig();
+  if (cfg.repo) {
+    gitlib
+      .initRepo(cfg.repo, cfg.branch, getToken())
+      .catch((e) =>
+        setMessage("error", `No se pudo vincular git: ${e.message}`),
+      );
+  }
+
+  return cfg;
 }
 
 function getToken(): string | null {

@@ -1,0 +1,11 @@
+# No enviar al contexto de build lo que se regenera o es local.
+node_modules
+**/node_modules
+**/dist
+data
+dist-exe
+client-native/target
+client-native/src-tauri/target
+.git
+*.log
+.DS_Store
