@@ -97,6 +97,37 @@ export function Desktop() {
     return () => clearTimeout(t);
   }, [toast]);
 
+  // --- Navegacion y atajos de teclado (sensacion nativa) ---
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      // Escape: cierra menus abiertos; si no hay, cierra la ventana enfocada.
+      if (e.key === "Escape") {
+        if (launcherOpen || userMenu || arrangeOpen) {
+          setLauncherOpen(false);
+          setUserMenu(false);
+          setArrangeOpen(false);
+          return;
+        }
+        const top = [...wm.windows]
+          .filter((w) => !w.minimized)
+          .sort((a, b) => b.z - a.z)[0];
+        if (top) wm.close(top.id);
+        return;
+      }
+      // Tecla Windows / Meta o Ctrl+Escape: abre/cierra el menu inicio.
+      if (
+        (e.key === "Meta" || (e.ctrlKey && e.key === "Escape")) &&
+        !e.repeat
+      ) {
+        e.preventDefault();
+        setLauncherOpen((o) => !o);
+        return;
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [launcherOpen, userMenu, arrangeOpen, wm]);
+
   // Espera a que el core vuelva (tras reiniciarse por una actualizacion) y
   // recarga el escritorio. Sondea /api/health hasta que responda.
   function waitForCoreAndReload() {
@@ -243,6 +274,30 @@ export function Desktop() {
               e.stopPropagation();
               handleIconClick(m);
             }}
+            onKeyDown={(e) => {
+              // Enter / Espacio abre directo (un solo toque con teclado).
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                setSelectedIcon(null);
+                openModule(m);
+                return;
+              }
+              // Flechas: mover el foco entre iconos.
+              if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+                e.preventDefault();
+                const btns = Array.from(
+                  e.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>(
+                    ".wtm-deskicon",
+                  ) ?? [],
+                );
+                const i = btns.indexOf(e.currentTarget);
+                const next =
+                  e.key === "ArrowDown"
+                    ? btns[i + 1]
+                    : btns[i - 1];
+                next?.focus();
+              }
+            }}
             title={`Abrir ${m.name}`}
           >
             <span
@@ -305,6 +360,26 @@ export function Desktop() {
             placeholder="Buscar aplicacion..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                // Abrir el primer resultado que coincida con la busqueda.
+                const first = modules.find((m) =>
+                  m.name.toLowerCase().includes(search.toLowerCase()),
+                );
+                if (first) {
+                  setSearch("");
+                  openModule(first);
+                }
+              } else if (e.key === "ArrowDown") {
+                // Bajar el foco al primer item de la lista.
+                e.preventDefault();
+                (
+                  e.currentTarget.parentElement?.querySelector(
+                    ".wtm-appitem",
+                  ) as HTMLElement | null
+                )?.focus();
+              }
+            }}
             autoFocus
           />
           {[...grouped.entries()].map(([cat, mods]) => {
@@ -330,7 +405,29 @@ export function Desktop() {
                         key={m.id}
                         className="wtm-appitem"
                         role="button"
+                        tabIndex={0}
                         onClick={() => openModule(m)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            openModule(m);
+                          } else if (
+                            e.key === "ArrowDown" ||
+                            e.key === "ArrowUp"
+                          ) {
+                            e.preventDefault();
+                            const items = Array.from(
+                              document.querySelectorAll<HTMLElement>(
+                                ".wtm-appitem",
+                              ),
+                            );
+                            const i = items.indexOf(e.currentTarget);
+                            (e.key === "ArrowDown"
+                              ? items[i + 1]
+                              : items[i - 1]
+                            )?.focus();
+                          }
+                        }}
                         style={{
                           cursor: canOpen(m) ? "pointer" : "default",
                         }}

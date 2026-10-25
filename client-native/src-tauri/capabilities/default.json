@@ -4,6 +4,7 @@
   "description": "Permisos base del cliente WTM.",
   "windows": ["main"],
   "permissions": [
-    "core:default"
+    "core:default",
+    "global-shortcut:default"
   ]
 }

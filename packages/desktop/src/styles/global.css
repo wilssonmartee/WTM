@@ -69,6 +69,30 @@ input,
 textarea {
   cursor: text;
 }
+
+/* Anillo de foco visible (navegacion por teclado) estilo Aero. Solo cuando se
+   navega con teclado (:focus-visible), no al hacer clic con el raton. */
+:focus {
+  outline: none;
+}
+button:focus-visible,
+a:focus-visible,
+[tabindex]:focus-visible,
+.wtm-appitem:focus-visible,
+.wtm-deskicon:focus-visible,
+.wtm-menu__item:focus-visible,
+.wtm-taskbtn:focus-visible,
+.ui-btn:focus-visible,
+.wtm-tool:focus-visible {
+  outline: 2px solid var(--wtm-accent);
+  outline-offset: 1px;
+  box-shadow: 0 0 0 3px rgba(90, 160, 230, 0.4);
+}
+.ui-input:focus-visible,
+.wtm-input:focus-visible,
+.wtm-launcher__search:focus-visible {
+  outline: none; /* los inputs ya tienen su propio halo de foco */
+}
 body {
   background: var(--wtm-bg);
 }
