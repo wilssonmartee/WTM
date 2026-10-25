@@ -1,15 +1,13 @@
 // Punto de entrada de la libreria de la app WTM (Tauri v2).
-// main.rs llama a run(). Separarlo en lib permite compartir el codigo
-// con el target movil en el futuro.
+// F11 alterna pantalla completa. La seleccion/lectura de archivos la maneja el
+// propio webview (input de archivo + IndexedDB), sin depender de IPC remoto
+// (que Tauri restringe por dominio y desaconseja por seguridad).
 
 use tauri::Manager;
-use tauri_plugin_global_shortcut::{
-    Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState,
-};
+use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Shortcut, ShortcutState};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    // F11 alterna pantalla completa. Alt+F4 lo maneja el SO.
     let f11 = Shortcut::new(None, Code::F11);
 
     tauri::Builder::default()
@@ -20,8 +18,6 @@ pub fn run() {
                         if let Some(win) = app.get_webview_window("main") {
                             let is_fs = win.is_fullscreen().unwrap_or(false);
                             let _ = win.set_fullscreen(!is_fs);
-                            // Al salir de fullscreen, quitamos tambien la
-                            // decoracion para que siga sin bordes del SO.
                             let _ = win.set_decorations(false);
                         }
                     }

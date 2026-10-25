@@ -18,13 +18,11 @@ import { ENCODINGS, normalizeText, type DbfTable } from "./dbf";
 import type { WorkerResponse } from "./dbf.worker";
 import { DataGrid } from "./DataGrid";
 import {
-  clearHandle,
-  ensureReadPermission,
+  clearFileBytes,
   gunzip,
   gzip,
-  loadHandle,
-  saveHandle,
-  supportsFsAccess,
+  loadFileBytes,
+  saveFileBytes,
 } from "./fileStore";
 
 interface ColumnConfig {
@@ -60,7 +58,7 @@ export function Articulos({ module }: { module: ModuleManifest }) {
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [query, setQuery] = useState("");
   const [fileLabel, setFileLabel] = useState("");
-  const [hasHandle, setHasHandle] = useState(false);
+  const [remembered, setRemembered] = useState(false);
   const [savedMsg, setSavedMsg] = useState("");
   const [selected, setSelected] = useState<Set<number>>(new Set());
 
@@ -142,13 +140,19 @@ export function Articulos({ module }: { module: ModuleManifest }) {
         if (cfg.sortDir) setSortDir(cfg.sortDir);
         if (cfg.fileLabel) setFileLabel(cfg.fileLabel);
       }
-      // Handle local recordado?
-      const h = await loadHandle();
-      setHasHandle(!!h);
 
-      // DBF guardado en el core -> mostrar de inmediato.
       setLoading(true);
       try {
+        // 1) Copia local recordada (bytes en IndexedDB) -> carga instantanea.
+        const local = await loadFileBytes();
+        if (local) {
+          setRemembered(true);
+          if (!cfg?.fileLabel) setFileLabel(local.name);
+          await parseBuffer(local.bytes.slice(0), cfg?.encoding ?? "auto");
+          setStatusMsg("Datos cargados (copia local recordada).");
+          return;
+        }
+        // 2) Si no, el DBF guardado en el core.
         const bytes = await api.moduleDownload("articulos", "/data");
         if (bytes) {
           const plain = await gunzip(bytes);
@@ -160,7 +164,7 @@ export function Articulos({ module }: { module: ModuleManifest }) {
           setStatusMsg("Datos cargados desde el servidor.");
         }
       } catch {
-        /* sin datos guardados aun */
+        /* sin datos aun */
       } finally {
         setLoading(false);
       }
@@ -212,64 +216,32 @@ export function Articulos({ module }: { module: ModuleManifest }) {
     }
   }
 
-  // --- Elegir archivo (config) ---
-  async function pickFile() {
+  // Elegir archivo (abre el selector del sistema). Vale tanto para
+  // Configuracion como para "Actualizar": siempre pide el archivo.
+  function pickFile() {
     setError("");
-    if (supportsFsAccess()) {
-      try {
-        const [handle] = await (
-          window as unknown as {
-            showOpenFilePicker: (o: unknown) => Promise<FileSystemFileHandle[]>;
-          }
-        ).showOpenFilePicker({
-          types: [{ description: "DBF", accept: { "application/octet-stream": [".dbf"] } }],
-        });
-        await saveHandle(handle);
-        setHasHandle(true);
-        setFileLabel(handle.name);
-        await persistConfig({ fileLabel: handle.name });
-        setSavedMsg(`Archivo configurado: ${handle.name}`);
-        setTimeout(() => setSavedMsg(""), 2500);
-      } catch {
-        /* el usuario cancelo */
-      }
-    } else {
-      fallbackRef.current?.click();
-    }
+    fallbackRef.current?.click();
   }
 
-  // Fallback (navegadores sin FS Access): input clasico, sin recordar handle.
-  async function onFallbackPick(e: React.ChangeEvent<HTMLInputElement>) {
+  // Al elegir un archivo: guardar bytes en IndexedDB (recordar), parsear,
+  // subir al core, y guardar la etiqueta en config.
+  async function onFilePicked(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
+    e.target.value = ""; // permite volver a elegir el mismo archivo
     if (!file) return;
-    setFileLabel(file.name);
-    await persistConfig({ fileLabel: file.name });
     const buf = await file.arrayBuffer();
+    setFileLabel(file.name);
+    await saveFileBytes(file.name, buf.slice(0)); // recordar contenido
+    setRemembered(true);
+    await persistConfig({ fileLabel: file.name });
     await refreshWith(buf);
   }
 
-  // --- Actualizar: releer archivo local -> parsear -> subir al core ---
-  async function refresh() {
+  // "Actualizar": vuelve a pedir el archivo para releer datos frescos.
+  function refresh() {
     setError("");
     setStatusMsg("");
-    const h = await loadHandle();
-    if (!h) {
-      if (!supportsFsAccess()) {
-        // sin handle en fallback: pedir archivo
-        fallbackRef.current?.click();
-        return;
-      }
-      setError("No hay archivo configurado. Ve a Configuracion.");
-      return;
-    }
-    const ok = await ensureReadPermission(h);
-    if (!ok) {
-      setError("Permiso denegado para leer el archivo.");
-      return;
-    }
-    const file = await h.getFile();
-    const buf = await file.arrayBuffer();
-    await refreshWith(buf);
+    pickFile();
   }
 
   async function refreshWith(buf: ArrayBuffer) {
@@ -277,7 +249,6 @@ export function Articulos({ module }: { module: ModuleManifest }) {
     await parseBuffer(buf, encoding);
     setLoading(false);
     setView("datos");
-    // Subir comprimido al core en segundo plano, con barra de progreso.
     uploadToCore(buf);
   }
 
@@ -333,8 +304,8 @@ export function Articulos({ module }: { module: ModuleManifest }) {
   }
 
   async function forgetFile() {
-    await clearHandle();
-    setHasHandle(false);
+    await clearFileBytes();
+    setRemembered(false);
     setFileLabel("");
     await persistConfig({ fileLabel: "" });
   }
@@ -393,14 +364,14 @@ export function Articulos({ module }: { module: ModuleManifest }) {
           type="file"
           accept=".dbf,.DBF"
           style={{ display: "none" }}
-          onChange={onFallbackPick}
+          onChange={onFilePicked}
         />
 
         {view === "config" ? (
           <ConfigView
             canConfig={canConfig}
             fileLabel={fileLabel}
-            hasHandle={hasHandle}
+            remembered={remembered}
             encoding={encoding}
             onEncoding={changeEncoding}
             onPick={pickFile}
@@ -408,7 +379,6 @@ export function Articulos({ module }: { module: ModuleManifest }) {
             columns={columns}
             setColumns={setColumns}
             onSave={saveConfigNow}
-            fsSupported={supportsFsAccess()}
           />
         ) : (
           <>
@@ -466,7 +436,7 @@ export function Articulos({ module }: { module: ModuleManifest }) {
 function ConfigView({
   canConfig,
   fileLabel,
-  hasHandle,
+  remembered,
   encoding,
   onEncoding,
   onPick,
@@ -474,11 +444,10 @@ function ConfigView({
   columns,
   setColumns,
   onSave,
-  fsSupported,
 }: {
   canConfig: boolean;
   fileLabel: string;
-  hasHandle: boolean;
+  remembered: boolean;
   encoding: string;
   onEncoding: (e: string) => void;
   onPick: () => void;
@@ -486,7 +455,6 @@ function ConfigView({
   columns: ColumnConfig[];
   setColumns: (c: ColumnConfig[]) => void;
   onSave: () => void;
-  fsSupported: boolean;
 }) {
   return (
     <div style={{ maxWidth: 620 }}>
@@ -510,7 +478,7 @@ function ConfigView({
           {fileLabel ? (
             <>
               <b>{fileLabel}</b>{" "}
-              {hasHandle && fsSupported && (
+              {remembered && (
                 <span style={{ color: "#2f7d4f" }}>· recordado</span>
               )}
             </>
@@ -526,12 +494,10 @@ function ConfigView({
           </Button>
         )}
       </div>
-      {!fsSupported && (
-        <Notice>
-          Tu navegador no recuerda archivos; tendras que elegirlo cada vez.
-          Usa el cliente de escritorio o Chrome/Edge para recordarlo.
-        </Notice>
-      )}
+      <Notice>
+        El archivo se recuerda (su contenido) en este equipo y se carga solo al
+        abrir. Pulsa <b>Actualizar</b> para releer una version mas reciente.
+      </Notice>
 
       <h3 style={h3}>Codificacion</h3>
       <Select
