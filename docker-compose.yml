@@ -1,0 +1,18 @@
+services:
+  wtm:
+    build: .
+    container_name: wtm-core
+    ports:
+      - "4000:4000"
+    volumes:
+      - wtm-data:/data
+    environment:
+      # Cambia el secreto JWT en produccion.
+      WTM_JWT_SECRET: "cambia-este-secreto-en-produccion"
+      # Cambia la contrasena del admin inicial.
+      WTM_ADMIN_USER: "admin"
+      WTM_ADMIN_PASSWORD: "admin"
+    restart: unless-stopped
+
+volumes:
+  wtm-data:

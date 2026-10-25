@@ -1,0 +1,26 @@
+{
+  "name": "wtm",
+  "version": "0.1.0",
+  "private": true,
+  "description": "WTM - Plataforma modular de gestion empresarial (nucleo + escritorio)",
+  "license": "MIT",
+  "workspaces": [
+    "packages/core",
+    "packages/desktop",
+    "packages/shared"
+  ],
+  "scripts": {
+    "dev": "npm run dev --workspace @wtm/core & npm run dev --workspace @wtm/desktop",
+    "dev:core": "npm run dev --workspace @wtm/core",
+    "dev:desktop": "npm run dev --workspace @wtm/desktop",
+    "build": "npm run build:shared && npm run build:core && npm run build:desktop",
+    "build:shared": "npm run build --workspace @wtm/shared",
+    "build:core": "npm run build:shared && npm run build --workspace @wtm/core",
+    "build:desktop": "npm run build:shared && npm run build --workspace @wtm/desktop",
+    "typecheck": "npm run typecheck --workspace @wtm/core",
+    "start": "npm run start --workspace @wtm/core"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

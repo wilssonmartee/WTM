@@ -1,0 +1,16 @@
+node_modules/
+dist/
+build/
+*.log
+.env
+.DS_Store
+
+# datos del core
+data/
+*.sqlite
+*.sqlite-journal
+*.db
+
+# tauri / rust
+client-native/target/
+client-native/src-tauri/target/

@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>WTM</title>
+    <link rel="stylesheet" href="shell.css" />
+  </head>
+  <body>
+    <!--
+      Cascaron minimo del cliente nativo WTM (thin client).
+      Lo unico que vive aqui es: elegir servidor + login.
+      Tras autenticar, la ventana navega al escritorio servido por el core,
+      por lo que TODA la interfaz vive en el core y se actualiza sola.
+    -->
+    <div class="shell">
+      <form id="form" class="card">
+        <div class="logo">W</div>
+        <h1>WTM</h1>
+        <p id="subtitle">Conecta con tu servidor</p>
+
+        <div class="field">
+          <label>Servidor</label>
+          <input
+            id="server"
+            type="text"
+            placeholder="http://localhost:4000"
+            autocomplete="off"
+            spellcheck="false"
+          />
+          <small id="serverStatus" class="status"></small>
+        </div>
+
+        <div class="field">
+          <label>Usuario</label>
+          <input id="username" type="text" autocomplete="username" />
+        </div>
+
+        <div class="field">
+          <label>Contrasena</label>
+          <input id="password" type="password" autocomplete="current-password" />
+        </div>
+
+        <p id="error" class="error"></p>
+
+        <button id="submit" class="btn" type="submit">Entrar</button>
+
+        <label class="remember">
+          <input id="remember" type="checkbox" checked />
+          Recordar este servidor
+        </label>
+      </form>
+    </div>
+
+    <script src="shell.js"></script>
+  </body>
+</html>
