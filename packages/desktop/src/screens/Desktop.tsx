@@ -12,6 +12,21 @@ import { Inventario } from "../apps/Inventario";
 import { Actualizaciones } from "../apps/Actualizaciones";
 import { wsUrl, getServerUrl } from "../lib/config";
 import { getToken } from "../lib/api";
+import type { SnapZone } from "../state/windows";
+import { snapGeom } from "../state/windows";
+
+/** Estilo del rectangulo de vista previa para una zona de snap. */
+function snapPreviewStyle(
+  zone: SnapZone,
+  taskbarH: number,
+): React.CSSProperties {
+  if (zone === "top") {
+    return { left: 0, top: 0, width: "100vw", height: `calc(100vh - ${taskbarH}px)` };
+  }
+  const g = snapGeom(zone, taskbarH);
+  if (!g || g.width === undefined) return { display: "none" };
+  return { left: g.x, top: g.y, width: g.width, height: g.height };
+}
 
 export function Desktop() {
   const {
@@ -28,6 +43,7 @@ export function Desktop() {
   const [search, setSearch] = useState("");
   const [arrangeOpen, setArrangeOpen] = useState(false);
   const [selectedIcon, setSelectedIcon] = useState<string | null>(null);
+  const [snapHint, setSnapHint] = useState<SnapZone>(null);
   const [clock, setClock] = useState(new Date());
   const [busy, setBusy] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
@@ -209,6 +225,13 @@ export function Desktop() {
 
       {/* Ventanas */}
       <div className="wtm-desktop__surface">
+        {/* Vista previa de acople (snap) mientras se arrastra al borde */}
+        {snapHint && (
+          <div
+            className="wtm-snap-preview"
+            style={snapPreviewStyle(snapHint, taskbarH)}
+          />
+        )}
         {wm.windows.map((w) => (
           <Window
             key={w.id}
@@ -220,6 +243,8 @@ export function Desktop() {
             onToggleMax={() => wm.toggleMax(w.id)}
             onMove={(x, y) => wm.move(w.id, x, y)}
             onResize={(ww, hh) => wm.resize(w.id, ww, hh)}
+            onSnapHint={setSnapHint}
+            onSnap={(zone) => wm.snapTo(w.id, zone)}
           >
             {w.module.id === "terminal" ? (
               <Terminal />
@@ -406,6 +431,16 @@ export function Desktop() {
           >
             Maximizar todo
           </button>
+          <div className="wtm-menu__sep" />
+          <button
+            className="wtm-menu__item"
+            onClick={() => {
+              wm.arrange("center-all");
+              setArrangeOpen(false);
+            }}
+          >
+            Traer todo al centro
+          </button>
         </div>
       )}
 
@@ -446,6 +481,12 @@ export function Desktop() {
               onClick={() =>
                 w.minimized ? wm.focus(w.id) : wm.minimize(w.id)
               }
+              onContextMenu={(e) => {
+                // Clic derecho: traer la ventana al centro (rescate).
+                e.preventDefault();
+                wm.center(w.id);
+              }}
+              title={`${w.module.name} — clic derecho para traer al centro`}
             >
               <Icon name={w.module.icon} size={14} />
               {w.module.name}

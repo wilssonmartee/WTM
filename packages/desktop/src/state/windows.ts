@@ -19,10 +19,80 @@ export type ArrangeMode =
   | "right"
   | "grid"
   | "cascade"
-  | "maximize-all";
+  | "maximize-all"
+  | "center-all";
+
+/** Zonas de acople al arrastrar al borde (estilo Windows Snap). */
+export type SnapZone =
+  | null
+  | "left"
+  | "right"
+  | "top"
+  | "top-left"
+  | "top-right"
+  | "bottom-left"
+  | "bottom-right";
 
 let seq = 1;
 let topZ = 10;
+
+/** Dada una zona de snap, devuelve la geometria resultante. */
+export function snapGeom(zone: SnapZone, taskbarH: number) {
+  const W = window.innerWidth;
+  const H = window.innerHeight - taskbarH;
+  const halfW = Math.floor(W / 2);
+  const halfH = Math.floor(H / 2);
+  switch (zone) {
+    case "left":
+      return { x: 0, y: 0, width: halfW, height: H, maximized: false };
+    case "right":
+      return { x: halfW, y: 0, width: W - halfW, height: H, maximized: false };
+    case "top":
+      return { maximized: true };
+    case "top-left":
+      return { x: 0, y: 0, width: halfW, height: halfH, maximized: false };
+    case "top-right":
+      return { x: halfW, y: 0, width: W - halfW, height: halfH, maximized: false };
+    case "bottom-left":
+      return { x: 0, y: halfH, width: halfW, height: H - halfH, maximized: false };
+    case "bottom-right":
+      return {
+        x: halfW,
+        y: halfH,
+        width: W - halfW,
+        height: H - halfH,
+        maximized: false,
+      };
+    default:
+      return null;
+  }
+}
+
+/** Detecta la zona de snap segun la posicion del cursor cerca de los bordes. */
+export function detectSnapZone(
+  clientX: number,
+  clientY: number,
+  taskbarH: number,
+): SnapZone {
+  const W = window.innerWidth;
+  const H = window.innerHeight - taskbarH;
+  const edge = 24; // margen de activacion
+  const corner = 80; // zona de esquina
+  const nearLeft = clientX <= edge;
+  const nearRight = clientX >= W - edge;
+  const nearTop = clientY <= edge;
+
+  if (nearTop && clientX <= corner) return "top-left";
+  if (nearTop && clientX >= W - corner) return "top-right";
+  if (nearLeft && clientY <= corner) return "top-left";
+  if (nearLeft && clientY >= H - corner) return "bottom-left";
+  if (nearRight && clientY <= corner) return "top-right";
+  if (nearRight && clientY >= H - corner) return "bottom-right";
+  if (nearLeft) return "left";
+  if (nearRight) return "right";
+  if (nearTop) return "top";
+  return null;
+}
 
 function defaultGeom(moduleId: string, count: number) {
   const offset = (count % 6) * 28;
@@ -123,6 +193,34 @@ export function useWindows(
     }, 500);
   }, [windows, userId]);
 
+  // --- Rescate: si el cliente se redimensiona y una ventana queda fuera de
+  // vista, la reacomodamos para que siempre quede una parte accesible. ---
+  useEffect(() => {
+    const onResize = () => {
+      const W = window.innerWidth;
+      const H = window.innerHeight - taskbarH;
+      const MARGIN = 80; // minimo visible de la ventana
+      setWindows((ws) =>
+        ws.map((w) => {
+          if (w.maximized) return w;
+          let { x, y, width, height } = w;
+          width = Math.min(width, W);
+          height = Math.min(height, H);
+          // Mantener al menos MARGIN px visibles por cada eje.
+          x = Math.min(x, W - MARGIN);
+          x = Math.max(x, -(width - MARGIN));
+          y = Math.min(y, H - 40);
+          y = Math.max(y, 0);
+          if (x === w.x && y === w.y && width === w.width && height === w.height)
+            return w;
+          return { ...w, x, y, width, height };
+        }),
+      );
+    };
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, [taskbarH]);
+
   const focus = useCallback((id: number) => {
     setWindows((ws) =>
       ws.map((w) => (w.id === id ? { ...w, z: ++topZ, minimized: false } : w)),
@@ -179,6 +277,43 @@ export function useWindows(
       ws.map((w) => (w.id === id ? { ...w, width, height } : w)),
     );
   }, []);
+
+  /** Aplica un acople (snap) a una ventana, p.ej. tras soltarla en un borde. */
+  const snapTo = useCallback(
+    (id: number, zone: SnapZone) => {
+      const g = snapGeom(zone, taskbarH);
+      if (!g) return;
+      setWindows((ws) =>
+        ws.map((w) => (w.id === id ? { ...w, ...g, z: ++topZ } : w)),
+      );
+    },
+    [taskbarH],
+  );
+
+  /** Trae una ventana al centro con un tamano visible (rescate). */
+  const center = useCallback(
+    (id: number) => {
+      const { w: W, h: H } = workArea(taskbarH);
+      setWindows((ws) =>
+        ws.map((w) => {
+          if (w.id !== id) return w;
+          const width = Math.min(w.width, W - 40);
+          const height = Math.min(w.height, H - 40);
+          return {
+            ...w,
+            maximized: false,
+            minimized: false,
+            width,
+            height,
+            x: Math.max(0, Math.floor((W - width) / 2)),
+            y: Math.max(0, Math.floor((H - height) / 2)),
+            z: ++topZ,
+          };
+        }),
+      );
+    },
+    [taskbarH],
+  );
 
   /** Auto-organiza las ventanas visibles (como el Snap de Windows). */
   const arrange = useCallback(
@@ -249,6 +384,21 @@ export function useWindows(
               maximized: false,
             });
           });
+        } else if (mode === "center-all") {
+          // Rescate: trae todas las ventanas visibles al centro, escalonadas.
+          const step = 30;
+          const cw = Math.min(760, Math.floor(W * 0.7));
+          const ch = Math.min(520, Math.floor(H * 0.7));
+          visible.forEach((win, i) => {
+            geom.set(win.id, {
+              x: Math.max(0, Math.floor((W - cw) / 2) + i * step - step),
+              y: Math.max(0, Math.floor((H - ch) / 2) + i * step - step),
+              width: cw,
+              height: ch,
+              maximized: false,
+              minimized: false,
+            });
+          });
         }
 
         return ws.map((w) =>
@@ -269,5 +419,7 @@ export function useWindows(
     move,
     resize,
     arrange,
+    snapTo,
+    center,
   };
 }

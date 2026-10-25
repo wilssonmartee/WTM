@@ -1,5 +1,6 @@
 import { useRef, type ReactNode } from "react";
-import type { WinState } from "../state/windows";
+import type { SnapZone, WinState } from "../state/windows";
+import { detectSnapZone } from "../state/windows";
 import { Icon } from "./Icon";
 
 interface Props {
@@ -11,6 +12,10 @@ interface Props {
   onToggleMax: () => void;
   onMove: (x: number, y: number) => void;
   onResize: (w: number, h: number) => void;
+  /** Se llama mientras se arrastra cerca de un borde (para la vista previa). */
+  onSnapHint: (zone: SnapZone) => void;
+  /** Se llama al soltar en una zona de snap. */
+  onSnap: (zone: SnapZone) => void;
   children: ReactNode;
 }
 
@@ -23,12 +28,15 @@ export function Window({
   onToggleMax,
   onMove,
   onResize,
+  onSnapHint,
+  onSnap,
   children,
 }: Props) {
   const drag = useRef<{ dx: number; dy: number } | null>(null);
   const rez = useRef<{ sx: number; sy: number; sw: number; sh: number } | null>(
     null,
   );
+  const snapZone = useRef<SnapZone>(null);
 
   if (win.minimized) return null;
 
@@ -44,11 +52,22 @@ export function Window({
     const x = Math.max(0, e.clientX - drag.current.dx);
     const y = Math.max(0, e.clientY - drag.current.dy);
     onMove(x, y);
+    // Detectar zona de acople segun el cursor y avisar para la vista previa.
+    const zone = detectSnapZone(e.clientX, e.clientY, taskbarH);
+    if (zone !== snapZone.current) {
+      snapZone.current = zone;
+      onSnapHint(zone);
+    }
   }
   function stopDrag() {
     drag.current = null;
     window.removeEventListener("mousemove", onDrag);
     window.removeEventListener("mouseup", stopDrag);
+    onSnapHint(null);
+    if (snapZone.current) {
+      onSnap(snapZone.current);
+      snapZone.current = null;
+    }
   }
 
   function startResize(e: React.MouseEvent) {

@@ -956,3 +956,14 @@ button {
   right: 54px;
   width: 210px;
 }
+
+/* --- Vista previa de acople (snap) al arrastrar al borde --- */
+.wtm-snap-preview {
+  position: absolute;
+  z-index: 9998;
+  border: 2px solid var(--wtm-accent);
+  background: rgba(59, 130, 246, 0.14);
+  border-radius: 8px;
+  pointer-events: none;
+  transition: left 0.08s, top 0.08s, width 0.08s, height 0.08s;
+}
