@@ -129,7 +129,8 @@ export function Inventario({ module }: { module: ModuleManifest }) {
         {adding && (
           <form
             onSubmit={createProduct}
-            style={{ display: "flex", gap: 8, marginTop: 16, flexWrap: "wrap" }}
+            className="ui-row"
+            style={{ marginTop: 16 }}
           >
             <Input
               style={{ width: 130 }}

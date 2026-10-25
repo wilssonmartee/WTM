@@ -298,7 +298,7 @@ export function Actualizaciones({ module }: { module: ModuleManifest }) {
             >
               Configuracion de GitHub
             </h3>
-            <div style={{ display: "grid", gap: 10, maxWidth: 440 }}>
+            <div className="ui-form">
               <div className="wtm-field">
                 <label>Repositorio (owner/repo)</label>
                 <input
@@ -372,6 +372,7 @@ export function Actualizaciones({ module }: { module: ModuleManifest }) {
         )}
 
         {tab === "historial" && (
+          <div className="ui-table-wrap">
           <table className="wtm-table">
             <thead>
               <tr>
@@ -423,9 +424,11 @@ export function Actualizaciones({ module }: { module: ModuleManifest }) {
               )}
             </tbody>
           </table>
+          </div>
         )}
 
         {tab === "registro" && (
+          <div className="ui-table-wrap">
           <table className="wtm-table">
             <thead>
               <tr>
@@ -469,6 +472,7 @@ export function Actualizaciones({ module }: { module: ModuleManifest }) {
               )}
             </tbody>
           </table>
+          </div>
         )}
       </div>
     </div>
