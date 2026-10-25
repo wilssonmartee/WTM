@@ -14,27 +14,34 @@ use serde::Serialize;
 use tauri::{Manager, WebviewUrl, WebviewWindowBuilder};
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Shortcut, ShortcutState};
 
+// Convierte el FilePath del dialogo a una ruta de sistema de archivos real.
+// Usamos into_path() -> PathBuf para evitar que quede con esquema (file://...).
+fn filepath_to_string(fp: tauri_plugin_dialog::FilePath) -> Option<String> {
+    fp.into_path()
+        .ok()
+        .map(|p| p.to_string_lossy().to_string())
+}
+
+// IMPORTANTE: usamos la API BLOQUEANTE del dialogo dentro de un comando async.
+// Los comandos async de Tauri corren fuera del hilo principal, asi que el
+// bloqueo no congela la UI y evitamos el patron fragil de canal + rx.recv().
 #[tauri::command]
 async fn wtm_pick_file(app: tauri::AppHandle) -> Option<String> {
     use tauri_plugin_dialog::DialogExt;
-    let (tx, rx) = std::sync::mpsc::channel();
     app.dialog()
         .file()
         .add_filter("DBF", &["dbf", "DBF"])
-        .pick_file(move |path| {
-            let _ = tx.send(path.map(|p| p.to_string()));
-        });
-    rx.recv().unwrap_or(None)
+        .blocking_pick_file()
+        .and_then(filepath_to_string)
 }
 
 #[tauri::command]
 async fn wtm_pick_dir(app: tauri::AppHandle) -> Option<String> {
     use tauri_plugin_dialog::DialogExt;
-    let (tx, rx) = std::sync::mpsc::channel();
-    app.dialog().file().pick_folder(move |path| {
-        let _ = tx.send(path.map(|p| p.to_string()));
-    });
-    rx.recv().unwrap_or(None)
+    app.dialog()
+        .file()
+        .blocking_pick_folder()
+        .and_then(filepath_to_string)
 }
 
 #[tauri::command]
