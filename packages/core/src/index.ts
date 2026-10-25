@@ -203,30 +203,29 @@ app.get("/api/modules", requireAuth, (_req, res) => {
   res.json({ ok: true, data: catalog() });
 });
 
-// Gestion de paquetes (instalar / desinstalar). Solo superadmin.
-app.post("/api/modules/:id/install", requireAuth, (req: AuthedRequest, res) => {
-  if (req.user!.globalRole !== "superadmin") {
-    res.status(403).json({ ok: false, error: "No autorizado" });
-    return;
-  }
-  const r = install(req.params.id);
-  if (!r.ok) {
-    res.status(400).json({ ok: false, error: r.error });
-    return;
-  }
-  res.json({ ok: true, data: catalog() });
-});
+// Gestion de paquetes (instalar / desinstalar). Admin o superadmin.
+// Puede tardar (instala dependencias npm del modulo), por eso es async.
+app.post(
+  "/api/modules/:id/install",
+  requireAuth,
+  async (req: AuthedRequest, res) => {
+    if (!requireAdmin(req, res)) return;
+    const r = await install(req.params.id);
+    if (!r.ok) {
+      res.status(400).json({ ok: false, error: r.error });
+      return;
+    }
+    res.json({ ok: true, data: catalog() });
+  },
+);
 
 app.post(
   "/api/modules/:id/uninstall",
   requireAuth,
-  (req: AuthedRequest, res) => {
-    if (req.user!.globalRole !== "superadmin") {
-      res.status(403).json({ ok: false, error: "No autorizado" });
-      return;
-    }
+  async (req: AuthedRequest, res) => {
+    if (!requireAdmin(req, res)) return;
     const purge = req.query.purge === "true";
-    const r = uninstall(req.params.id, purge);
+    const r = await uninstall(req.params.id, purge);
     if (!r.ok) {
       res.status(400).json({ ok: false, error: r.error });
       return;

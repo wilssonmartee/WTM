@@ -3,7 +3,9 @@ import type { ModuleInfo, ModuleManifest } from "@wtm/shared";
 import type { WtmModule } from "./types.js";
 import { db } from "../db.js";
 import { inventarioModule } from "./inventario.js";
+import { articulosModule } from "./articulos.js";
 import { PLACEHOLDER_MODULES } from "./placeholders.js";
+import { addModuleDeps, removeModuleDeps } from "./deps.js";
 
 /**
  * Registro de modulos del core.
@@ -17,7 +19,7 @@ import { PLACEHOLDER_MODULES } from "./placeholders.js";
  * punto /api/m/:moduleId despacha al router del modulo si esta instalado.
  */
 
-const AVAILABLE_MODULES: WtmModule[] = [inventarioModule];
+const AVAILABLE_MODULES: WtmModule[] = [inventarioModule, articulosModule];
 
 // Routers construidos una vez (se despachan solo si el modulo esta instalado).
 const routers = new Map<string, Router>();
@@ -54,29 +56,46 @@ export function installedVersion(id: string): string | undefined {
   return row?.version;
 }
 
-export function install(id: string): { ok: boolean; error?: string } {
+export async function install(
+  id: string,
+): Promise<{ ok: boolean; error?: string; deps?: string[] }> {
   const mod = findModule(id);
   if (!mod) return { ok: false, error: `Modulo desconocido: ${id}` };
   if (isInstalled(id)) return { ok: true };
 
-  // Dependencias.
+  // Dependencias de modulo (otros modulos requeridos).
   for (const dep of mod.manifest.dependencies ?? []) {
     if (!isInstalled(dep)) {
       return { ok: false, error: `Falta la dependencia: ${dep}` };
     }
   }
 
+  // Instalar dependencias npm del modulo (ref-count).
+  let installedDeps: string[] = [];
+  if (mod.manifest.npmDependencies) {
+    const r = await addModuleDeps(id, mod.manifest.npmDependencies);
+    if (r.errors.length > 0) {
+      // Revertir el registro de deps si fallo la instalacion.
+      await removeModuleDeps(id);
+      return {
+        ok: false,
+        error: `No se pudieron instalar dependencias: ${r.errors.join("; ")}`,
+      };
+    }
+    installedDeps = r.installed;
+  }
+
   mod.migrate(db);
   db.prepare(
     "INSERT INTO installed_modules (id, version, installed_at) VALUES (?, ?, ?)",
   ).run(id, mod.manifest.version, new Date().toISOString());
-  return { ok: true };
+  return { ok: true, deps: installedDeps };
 }
 
-export function uninstall(
+export async function uninstall(
   id: string,
   purge: boolean,
-): { ok: boolean; error?: string } {
+): Promise<{ ok: boolean; error?: string; removedDeps?: string[] }> {
   const mod = findModule(id);
   if (!mod) return { ok: false, error: `Modulo desconocido: ${id}` };
   if (!isInstalled(id)) return { ok: true };
@@ -97,7 +116,15 @@ export function uninstall(
 
   if (purge && mod.drop) mod.drop(db);
   db.prepare("DELETE FROM installed_modules WHERE id = ?").run(id);
-  return { ok: true };
+
+  // Al PURGAR, soltamos sus dependencias npm (ref-count) y desinstalamos las
+  // que ya nadie use. Al desinstalar sin purgar, conservamos las deps.
+  let removedDeps: string[] = [];
+  if (purge) {
+    const r = await removeModuleDeps(id);
+    removedDeps = r.removed;
+  }
+  return { ok: true, removedDeps };
 }
 
 /** Catalogo completo (reales + placeholders) con estado de instalacion. */

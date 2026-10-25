@@ -226,16 +226,14 @@ function pkgCommand(user: User, args: string[]): TerminalLine[] {
     if (!target) {
       return [line("stderr", `wtm pkg ${action}: indica un modulo`)];
     }
+    // install/remove pueden tardar (dependencias npm): se lanzan en segundo
+    // plano. Usa 'wtm pkg list' para ver el resultado.
     if (action === "install") {
-      const r = install(target);
-      return r.ok
-        ? [line("info", `Modulo '${target}' instalado.`)]
-        : [line("stderr", `wtm pkg install: ${r.error}`)];
+      install(target).catch(() => {});
+      return [line("info", `Instalando '${target}'... (ver 'wtm pkg list')`)];
     }
-    const r = uninstall(target, false);
-    return r.ok
-      ? [line("info", `Modulo '${target}' desinstalado.`)]
-      : [line("stderr", `wtm pkg remove: ${r.error}`)];
+    uninstall(target, false).catch(() => {});
+    return [line("info", `Desinstalando '${target}'...`)];
   }
 
   if (action === "update") {

@@ -11,6 +11,7 @@ import { ModuleView } from "../apps/ModuleView";
 import { Inventario } from "../apps/Inventario";
 import { Actualizaciones } from "../apps/Actualizaciones";
 import { Ajustes } from "../apps/Ajustes";
+import { Articulos } from "../apps/articulos/Articulos";
 import { wsUrl, getServerUrl } from "../lib/config";
 import { getToken } from "../lib/api";
 import type { SnapZone } from "../state/windows";
@@ -209,9 +210,14 @@ export function Desktop() {
   // Iconos destacados en el escritorio.
   const deskIcons = modules.filter(
     (m) =>
-      ["terminal", "facturacion", "inventario", "contabilidad", "ajustes"].includes(
-        m.id,
-      ) && canSee(m),
+      [
+        "terminal",
+        "articulos",
+        "facturacion",
+        "inventario",
+        "contabilidad",
+        "ajustes",
+      ].includes(m.id) && canSee(m),
   );
 
   async function openModule(m: ModuleInfo) {
@@ -355,6 +361,8 @@ export function Desktop() {
               <Actualizaciones module={w.module} />
             ) : w.module.id === "ajustes" ? (
               <Ajustes module={w.module} />
+            ) : w.module.id === "articulos" ? (
+              <Articulos module={w.module} />
             ) : (
               <ModuleView module={w.module} />
             )}

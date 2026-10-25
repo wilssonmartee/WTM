@@ -133,6 +133,13 @@ export interface ModuleManifest {
    * permiso. Un modulo sensible puede exigir mas para abrirse siquiera.
    */
   minLevel?: AppLevel;
+  /**
+   * Dependencias npm que el modulo necesita en el SERVIDOR (core). Se instalan
+   * al instalar el modulo y se eliminan al purgarlo si ningun otro modulo las
+   * usa (conteo de referencias, como un gestor de paquetes).
+   * Ej: { "mongodb": "^6.0.0" }. Vacio si el modulo no necesita extras.
+   */
+  npmDependencies?: Record<string, string>;
 }
 
 /** Manifiesto + estado de instalacion, tal como lo ve el cliente. */

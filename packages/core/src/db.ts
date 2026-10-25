@@ -64,6 +64,16 @@ function migrate() {
       value TEXT NOT NULL
     );
 
+    -- Dependencias npm requeridas por modulos (conteo de referencias).
+    -- Una fila por (modulo, paquete). Al purgar un modulo se borran sus filas;
+    -- un paquete sin filas restantes puede desinstalarse.
+    CREATE TABLE IF NOT EXISTS module_deps (
+      module_id TEXT NOT NULL,
+      package   TEXT NOT NULL,
+      version   TEXT NOT NULL,
+      PRIMARY KEY (module_id, package)
+    );
+
     -- Permisos de app: que usuario puede usar que modulo, en que empresa
     -- (o en todas con company_id = '*'), y con que nivel (1-10).
     CREATE TABLE IF NOT EXISTS permissions (
@@ -158,6 +168,7 @@ function seed() {
   );
   insPerm.run(juanId, "inventario", "*", 3);
   insPerm.run(juanId, "facturacion", companyA, 1);
+  insPerm.run(juanId, "articulos", "*", 2);
 
   console.log("[db] Datos iniciales creados.");
   console.log(`[db] Superadmin: ${config.seedAdminUser} / ${config.seedAdminPassword}`);
