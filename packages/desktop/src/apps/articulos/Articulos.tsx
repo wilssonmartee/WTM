@@ -24,6 +24,7 @@ import {
   loadFileBytes,
   saveFileBytes,
 } from "./fileStore";
+import { native } from "../../lib/native";
 
 interface ColumnConfig {
   name: string;
@@ -36,7 +37,8 @@ interface SavedConfig {
   sortBy: string | null;
   sortDir: "asc" | "desc";
   encoding: string;
-  fileLabel: string; // etiqueta del archivo (nombre), informativa
+  fileLabel: string; // nombre del archivo (informativo)
+  filePath?: string; // ruta real (solo cliente nativo): permite releer sin pedir
 }
 
 type View = "datos" | "config";
@@ -60,6 +62,8 @@ export function Articulos({ module }: { module: ModuleManifest }) {
   const [fileLabel, setFileLabel] = useState("");
   const [remembered, setRemembered] = useState(false);
   const [savedMsg, setSavedMsg] = useState("");
+  const filePathRef = useRef<string | null>(null);
+  const nativeAvailable = !!native();
   const [selected, setSelected] = useState<Set<number>>(new Set());
 
   const savedConfigRef = useRef<SavedConfig | null>(null);
@@ -139,10 +143,30 @@ export function Articulos({ module }: { module: ModuleManifest }) {
         if (cfg.sortBy) setSortBy(cfg.sortBy);
         if (cfg.sortDir) setSortDir(cfg.sortDir);
         if (cfg.fileLabel) setFileLabel(cfg.fileLabel);
+        if (cfg.filePath) filePathRef.current = cfg.filePath;
       }
 
       setLoading(true);
       try {
+        const n = native();
+        // 0) Cliente nativo con ruta guardada -> releer del disco directo.
+        if (n && cfg?.filePath) {
+          try {
+            const bytes = await n.readFile(cfg.filePath);
+            setRemembered(true);
+            await parseBuffer(
+              bytes.buffer.slice(
+                bytes.byteOffset,
+                bytes.byteOffset + bytes.byteLength,
+              ) as ArrayBuffer,
+              cfg.encoding ?? "auto",
+            );
+            setStatusMsg("Datos leidos del archivo local.");
+            return;
+          } catch {
+            /* la ruta ya no existe; seguimos con las otras fuentes */
+          }
+        }
         // 1) Copia local recordada (bytes en IndexedDB) -> carga instantanea.
         const local = await loadFileBytes();
         if (local) {
@@ -216,31 +240,67 @@ export function Articulos({ module }: { module: ModuleManifest }) {
     }
   }
 
-  // Elegir archivo (abre el selector del sistema). Vale tanto para
-  // Configuracion como para "Actualizar": siempre pide el archivo.
-  function pickFile() {
+  // Elegir archivo (Configuracion). En nativo: dialogo del sistema -> guarda
+  // la RUTA. En web: input clasico -> guarda el CONTENIDO en IndexedDB.
+  async function pickFile() {
     setError("");
-    fallbackRef.current?.click();
+    const n = native();
+    if (n) {
+      const path = await n.pickFile();
+      if (!path) return;
+      filePathRef.current = path;
+      const label = path.split(/[\\/]/).pop() || path;
+      setFileLabel(label);
+      setRemembered(true);
+      await persistConfig({ fileLabel: label, filePath: path });
+      const bytes = await n.readFile(path);
+      await refreshWith(
+        bytes.buffer.slice(
+          bytes.byteOffset,
+          bytes.byteOffset + bytes.byteLength,
+        ) as ArrayBuffer,
+      );
+    } else {
+      fallbackRef.current?.click();
+    }
   }
 
-  // Al elegir un archivo: guardar bytes en IndexedDB (recordar), parsear,
-  // subir al core, y guardar la etiqueta en config.
+  // Input clasico (solo web): guarda el contenido en IndexedDB.
   async function onFilePicked(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
-    e.target.value = ""; // permite volver a elegir el mismo archivo
+    e.target.value = "";
     if (!file) return;
     const buf = await file.arrayBuffer();
     setFileLabel(file.name);
-    await saveFileBytes(file.name, buf.slice(0)); // recordar contenido
+    await saveFileBytes(file.name, buf.slice(0));
     setRemembered(true);
     await persistConfig({ fileLabel: file.name });
     await refreshWith(buf);
   }
 
-  // "Actualizar": vuelve a pedir el archivo para releer datos frescos.
-  function refresh() {
+  // "Actualizar": en nativo con ruta guardada, relee del disco SIN pedir nada.
+  // En web, pide el archivo (el navegador no puede releer solo).
+  async function refresh() {
     setError("");
     setStatusMsg("");
+    const n = native();
+    if (n && filePathRef.current) {
+      try {
+        setLoading(true);
+        const bytes = await n.readFile(filePathRef.current);
+        await refreshWith(
+          bytes.buffer.slice(
+            bytes.byteOffset,
+            bytes.byteOffset + bytes.byteLength,
+          ) as ArrayBuffer,
+        );
+      } catch {
+        setLoading(false);
+        setError("No se pudo leer el archivo. Reconfiguralo en Configuracion.");
+      }
+      return;
+    }
+    // Web (o sin ruta): pedir archivo.
     pickFile();
   }
 
@@ -286,6 +346,7 @@ export function Articulos({ module }: { module: ModuleManifest }) {
       sortDir,
       encoding,
       fileLabel,
+      filePath: filePathRef.current ?? undefined,
       ...extra,
     };
     savedConfigRef.current = cfg;
@@ -305,9 +366,10 @@ export function Articulos({ module }: { module: ModuleManifest }) {
 
   async function forgetFile() {
     await clearFileBytes();
+    filePathRef.current = null;
     setRemembered(false);
     setFileLabel("");
-    await persistConfig({ fileLabel: "" });
+    await persistConfig({ fileLabel: "", filePath: undefined });
   }
 
   return (
@@ -370,6 +432,7 @@ export function Articulos({ module }: { module: ModuleManifest }) {
         {view === "config" ? (
           <ConfigView
             canConfig={canConfig}
+            nativeAvailable={nativeAvailable}
             fileLabel={fileLabel}
             remembered={remembered}
             encoding={encoding}
@@ -435,6 +498,7 @@ export function Articulos({ module }: { module: ModuleManifest }) {
 // ================= Vista de configuracion =================
 function ConfigView({
   canConfig,
+  nativeAvailable,
   fileLabel,
   remembered,
   encoding,
@@ -446,6 +510,7 @@ function ConfigView({
   onSave,
 }: {
   canConfig: boolean;
+  nativeAvailable: boolean;
   fileLabel: string;
   remembered: boolean;
   encoding: string;
@@ -495,8 +560,9 @@ function ConfigView({
         )}
       </div>
       <Notice>
-        El archivo se recuerda (su contenido) en este equipo y se carga solo al
-        abrir. Pulsa <b>Actualizar</b> para releer una version mas reciente.
+        {nativeAvailable
+          ? "Se recuerda la RUTA del archivo. Al abrir se lee del disco automaticamente, y Actualizar lo relee sin pedir seleccion."
+          : "En el navegador se recuerda el CONTENIDO (carga solo al abrir), pero Actualizar pedira el archivo porque el navegador no puede releer el disco. Usa el cliente de escritorio para relectura automatica."}
       </Notice>
 
       <h3 style={h3}>Codificacion</h3>

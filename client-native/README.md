@@ -102,6 +102,22 @@ Abre el cascaron (login). Al entrar, carga el escritorio del core. Util para ite
 sobre el propio cascaron. Para iterar sobre la UI, trabaja en `packages/desktop` y
 el cambio se vera en el cliente sin recompilar el `.exe`.
 
+## Puente nativo de archivos
+
+El cliente nativo expone `window.__WTM_NATIVE__` (via init script) para que los
+modulos accedan al disco real:
+- `pickFile()` / `pickDir()`: dialogos nativos que devuelven la RUTA.
+- `readFile(ruta)`: lee un archivo del disco.
+- `listDir(ruta)`: lista archivos de una carpeta (util p. ej. para ver que
+  articulo ya tiene foto).
+
+Gracias a esto, el modulo Articulos recuerda la RUTA del DBF y "Actualizar" lo
+relee sin pedir seleccion (en el navegador web no es posible: pide el archivo).
+
+Nota de seguridad: para que la UI servida por el core (origen remoto) pueda usar
+el puente, `capabilities/remote.json` habilita el IPC para origenes http/https.
+Esto es aceptable porque solo te conectas a tu propio servidor WTM.
+
 ## Pantalla completa
 
 El cliente arranca en **pantalla completa sin bordes** (como un juego/kiosco), sin

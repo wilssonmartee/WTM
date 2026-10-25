@@ -8,20 +8,7 @@
   },
   "app": {
     "withGlobalTauri": true,
-    "windows": [
-      {
-        "label": "main",
-        "title": "WTM",
-        "width": 1280,
-        "height": 800,
-        "minWidth": 900,
-        "minHeight": 560,
-        "resizable": true,
-        "center": true,
-        "fullscreen": true,
-        "decorations": false
-      }
-    ],
+    "windows": [],
     "security": {
       "csp": null
     }

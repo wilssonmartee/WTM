@@ -1,0 +1,13 @@
+{
+  "$schema": "../gen/schemas/remote-schema.json",
+  "identifier": "remote-bridge",
+  "description": "Permite que la UI servida por el core (origen remoto) use el puente nativo de archivos. Solo te conectas a tu propio servidor WTM.",
+  "windows": ["main"],
+  "remote": {
+    "urls": ["http://*", "https://*"]
+  },
+  "permissions": [
+    "core:default",
+    "dialog:default"
+  ]
+}
