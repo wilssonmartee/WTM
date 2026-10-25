@@ -221,6 +221,8 @@ export interface UpdateStatus {
   lastMessage: UpdateMessage | null;
   /** Si hay una operacion en curso (update/rollback). */
   busy: boolean;
+  /** Fase actual de la operacion en curso. */
+  phase: UpdatePhase;
 }
 
 export interface UpdateMessage {
@@ -243,4 +245,27 @@ export interface UpdateLogEntry {
 export interface SystemReloadEvent {
   type: "system-reload";
   reason: string;
+}
+
+/** Fases de una operacion de actualizacion/reversion. */
+export type UpdatePhase =
+  | "idle"
+  | "checking"
+  | "downloading"
+  | "building"
+  | "reverting"
+  | "restarting"
+  | "done"
+  | "error";
+
+/** Evento de progreso de actualizacion que el core emite por WebSocket. */
+export interface UpdateProgressEvent {
+  type: "update-progress";
+  phase: UpdatePhase;
+  /** Linea de log legible para mostrar en vivo. */
+  line: string;
+  level: "info" | "success" | "error";
+  at: string;
+  /** Estado completo actualizado (para refrescar la UI sin pedirlo). */
+  status?: UpdateStatus;
 }

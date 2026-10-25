@@ -262,8 +262,8 @@ server.on("upgrade", (req, socket, head) => {
   }
 });
 
-updater.onReloadRequested((reason) => {
-  const msg = JSON.stringify({ type: "system-reload", reason });
+function broadcastSystem(payload: unknown) {
+  const msg = JSON.stringify(payload);
   for (const client of systemWss.clients) {
     try {
       client.send(msg);
@@ -271,6 +271,15 @@ updater.onReloadRequested((reason) => {
       /* ignorar clientes caidos */
     }
   }
+}
+
+updater.onReloadRequested((reason) => {
+  broadcastSystem({ type: "system-reload", reason });
+});
+
+// Progreso de actualizacion en vivo hacia los clientes.
+updater.onProgress((ev) => {
+  broadcastSystem(ev);
 });
 
 // Escuchar en 0.0.0.0 (todas las interfaces) para aceptar conexiones de otros

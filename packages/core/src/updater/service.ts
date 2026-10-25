@@ -1,5 +1,4 @@
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
+import { spawn } from "node:child_process";
 import { db } from "../db.js";
 import {
   DEFAULT_UPDATE_CONFIG,
@@ -7,40 +6,59 @@ import {
   type UpdateStatus,
   type UpdateLogEntry,
   type UpdateMessage,
+  type UpdatePhase,
+  type UpdateProgressEvent,
 } from "@wtm/shared";
 import * as gitlib from "./git.js";
 import { REPO_ROOT } from "./git.js";
 
-const execFileAsync = promisify(execFile);
-
 /**
- * Servicio de autoactualizacion.
+ * Servicio de autoactualizacion, EN TIEMPO REAL.
  *
- * Flujo de update:
- *   1. fetch del remoto.
- *   2. guardar el commit actual (para poder revertir).
- *   3. aplicar los commits nuevos.
- *   4. reconstruir (build). Si falla -> revertir al commit guardado,
- *      reconstruir de nuevo y alertar. El sistema nunca queda roto.
- *   5. si todo va bien -> pedir recarga de clientes y reiniciar el core.
- *
- * El reinicio lo hace salir(0): el supervisor (wtm-server.sh o el contenedor)
- * lo vuelve a levantar ya con el codigo nuevo compilado.
+ * update()/rollback() devuelven de inmediato y hacen el trabajo en segundo
+ * plano, emitiendo eventos de progreso por WebSocket (fase + log en vivo).
+ * Cuando el build termina bien, se pide recarga y el core se reinicia; el
+ * supervisor lo levanta con el codigo nuevo y los clientes se reconectan y
+ * refrescan solos.
  */
 
 const CONFIG_KEY = "update.config";
-const TOKEN_KEY = "update.token"; // guardado aparte, nunca se devuelve
+const TOKEN_KEY = "update.token";
 let lastChecked: string | null = null;
 let lastMessage: UpdateMessage | null = null;
 let busy = false;
+let phase: UpdatePhase = "idle";
+
 let reloadBroadcaster: ((reason: string) => void) | null = null;
+let progressBroadcaster: ((ev: UpdateProgressEvent) => void) | null = null;
 
 export function onReloadRequested(fn: (reason: string) => void) {
   reloadBroadcaster = fn;
 }
+export function onProgress(fn: (ev: UpdateProgressEvent) => void) {
+  progressBroadcaster = fn;
+}
 
 function setMessage(level: UpdateMessage["level"], text: string) {
   lastMessage = { level, text, at: new Date().toISOString() };
+}
+
+/** Emite una linea de progreso (y mantiene lastMessage en sync). */
+async function emit(
+  p: UpdatePhase,
+  line: string,
+  level: UpdateProgressEvent["level"] = "info",
+) {
+  phase = p;
+  setMessage(level, line);
+  progressBroadcaster?.({
+    type: "update-progress",
+    phase: p,
+    line,
+    level,
+    at: new Date().toISOString(),
+    status: await getStatus(),
+  });
 }
 
 // ---- Config ----
@@ -52,11 +70,7 @@ export function getConfig(): UpdateConfig {
   if (!row) return { ...DEFAULT_UPDATE_CONFIG, hasToken: !!token };
   try {
     const stored = JSON.parse(row.value) as Partial<UpdateConfig>;
-    return {
-      ...DEFAULT_UPDATE_CONFIG,
-      ...stored,
-      hasToken: !!token,
-    };
+    return { ...DEFAULT_UPDATE_CONFIG, ...stored, hasToken: !!token };
   } catch {
     return { ...DEFAULT_UPDATE_CONFIG, hasToken: !!token };
   }
@@ -73,11 +87,8 @@ export function setConfig(
     "INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
   ).run(CONFIG_KEY, JSON.stringify({ ...next, hasToken: undefined }));
 
-  // El token se guarda/borra por separado.
   if (token !== undefined) setToken(token);
 
-  // Si se configuro un repo, vincular git (init si hace falta) en segundo
-  // plano. No bloquea el guardado ni rompe si git no esta disponible.
   const cfg = getConfig();
   if (cfg.repo) {
     gitlib
@@ -86,7 +97,6 @@ export function setConfig(
         setMessage("error", `No se pudo vincular git: ${e.message}`),
       );
   }
-
   return cfg;
 }
 
@@ -149,6 +159,7 @@ export async function getStatus(): Promise<UpdateStatus> {
     lastChecked,
     lastMessage,
     busy,
+    phase,
   };
 }
 
@@ -157,25 +168,44 @@ export async function getHistory() {
   return gitlib.history(50);
 }
 
-// ---- Reconstruir ----
-async function rebuild(): Promise<{ ok: boolean; detail: string }> {
-  try {
-    await execFileAsync("npm", ["run", "build"], {
+// ---- Reconstruir con salida en vivo ----
+function rebuild(): Promise<{ ok: boolean; detail: string }> {
+  return new Promise((resolve) => {
+    const child = spawn("npm", ["run", "build"], {
       cwd: REPO_ROOT,
-      maxBuffer: 50 * 1024 * 1024,
       env: process.env,
     });
-    return { ok: true, detail: "build ok" };
-  } catch (e) {
-    const err = e as { stderr?: string; message?: string };
-    return {
-      ok: false,
-      detail: (err.stderr || err.message || "build fallo").slice(-2000),
+    let tail = "";
+    const onData = (buf: Buffer) => {
+      const text = buf.toString();
+      tail = (tail + text).slice(-4000);
+      // Emitimos lineas significativas del build como progreso.
+      for (const raw of text.split("\n")) {
+        const l = raw.trim();
+        if (
+          l &&
+          /(building|transform|tsc|vite|compil|error|built|bundle|esbuild)/i.test(
+            l,
+          )
+        ) {
+          emit("building", l.slice(0, 160), /error/i.test(l) ? "error" : "info");
+        }
+      }
     };
-  }
+    child.stdout.on("data", onData);
+    child.stderr.on("data", onData);
+    child.on("close", (code) => {
+      resolve(
+        code === 0
+          ? { ok: true, detail: "build ok" }
+          : { ok: false, detail: tail.slice(-2000) || "build fallo" },
+      );
+    });
+    child.on("error", (e) => resolve({ ok: false, detail: e.message }));
+  });
 }
 
-// ---- Revisar remoto ----
+// ---- Revisar remoto (sincrono, rapido) ----
 export async function check(): Promise<UpdateStatus> {
   const config = getConfig();
   if (!(await gitlib.isGitRepo())) {
@@ -187,6 +217,7 @@ export async function check(): Promise<UpdateStatus> {
     return getStatus();
   }
   try {
+    await emit("checking", "Revisando el remoto...");
     await gitlib.setRemote(config.repo, getToken());
     await gitlib.fetch(config.branch);
     lastChecked = new Date().toISOString();
@@ -198,47 +229,64 @@ export async function check(): Promise<UpdateStatus> {
       ok: true,
       detail: `${behind} commit(s) nuevos`,
     });
-    setMessage(
-      behind > 0 ? "info" : "success",
+    phase = "idle";
+    await emit(
+      "idle",
       behind > 0
         ? `Hay ${behind} actualizacion(es) disponible(s).`
         : "El sistema esta al dia.",
+      "success",
     );
   } catch (e) {
-    setMessage("error", `Error al revisar: ${(e as Error).message}`);
+    await emit("error", `Error al revisar: ${(e as Error).message}`, "error");
   }
   return getStatus();
 }
 
-// ---- Aplicar actualizacion (con auto-reversion) ----
-export async function update(): Promise<UpdateStatus> {
+// ---- Aplicar actualizacion (asincrono, con progreso) ----
+export function update(): UpdateStatus | Promise<UpdateStatus> {
   if (busy) return getStatus();
+  busy = true;
+  // Lanzar el trabajo en segundo plano; devolver el estado actual ya.
+  void runUpdate();
+  return getStatus();
+}
+
+async function runUpdate() {
   const config = getConfig();
   if (!(await gitlib.isGitRepo()) || !config.repo) {
-    setMessage("error", "Actualizaciones no configuradas.");
-    return getStatus();
+    await emit("error", "Actualizaciones no configuradas.", "error");
+    busy = false;
+    phase = "idle";
+    return;
   }
-
-  busy = true;
   const prev = await gitlib.headHash();
   try {
+    await emit("checking", "Revisando el remoto...");
     await gitlib.setRemote(config.repo, getToken());
     await gitlib.fetch(config.branch);
     const behind = await gitlib.behindCount(config.branch);
     if (behind === 0) {
-      setMessage("success", "Ya estas en la ultima version.");
+      await emit("done", "Ya estas en la ultima version.", "success");
       busy = false;
-      return getStatus();
+      phase = "idle";
+      return;
     }
 
+    await emit("downloading", `Aplicando ${behind} commit(s)...`);
     await gitlib.applyRemote(config.branch);
     const applied = await gitlib.headHash();
 
+    await emit("building", "Compilando la nueva version...");
     const build = await rebuild();
     if (!build.ok) {
-      // Auto-reversion: el build fallo, volvemos al commit anterior.
+      await emit(
+        "reverting",
+        "El build fallo. Revirtiendo al estado anterior...",
+        "error",
+      );
       await gitlib.checkout(prev);
-      await rebuild(); // reconstruir el estado bueno conocido
+      await rebuild();
       log({
         action: "revert-failed-build",
         fromCommit: applied,
@@ -246,12 +294,15 @@ export async function update(): Promise<UpdateStatus> {
         ok: false,
         detail: build.detail,
       });
-      setMessage(
-        "error",
-        "La actualizacion no compilo. Se revirtio al estado anterior.",
-      );
       busy = false;
-      return getStatus();
+      phase = "error";
+      await emit(
+        "error",
+        "La actualizacion no compilo. Se restauro la version anterior.",
+        "error",
+      );
+      phase = "idle";
+      return;
     }
 
     log({
@@ -261,19 +312,16 @@ export async function update(): Promise<UpdateStatus> {
       ok: true,
       detail: "actualizado y compilado",
     });
-    setMessage("success", "Actualizado. Reiniciando el sistema...");
+    await emit("restarting", "Actualizado. Reiniciando el sistema...", "success");
     busy = false;
-
-    // Avisar a los clientes y reiniciar para cargar el codigo nuevo.
     scheduleReload("Sistema actualizado");
-    return getStatus();
   } catch (e) {
-    // Cualquier fallo inesperado: intentar volver al estado previo.
     try {
+      await emit("reverting", "Error. Restaurando version anterior...", "error");
       await gitlib.checkout(prev);
       await rebuild();
     } catch {
-      /* dejamos constancia abajo */
+      /* se registra abajo */
     }
     log({
       action: "update",
@@ -282,30 +330,41 @@ export async function update(): Promise<UpdateStatus> {
       ok: false,
       detail: (e as Error).message,
     });
-    setMessage("error", `Fallo la actualizacion: ${(e as Error).message}`);
     busy = false;
-    return getStatus();
+    await emit("error", `Fallo la actualizacion: ${(e as Error).message}`, "error");
+    phase = "idle";
   }
 }
 
-// ---- Reversion manual a un commit ----
-export async function rollback(targetHash: string): Promise<UpdateStatus> {
+// ---- Reversion manual (asincrono, con progreso) ----
+export function rollback(targetHash: string): UpdateStatus | Promise<UpdateStatus> {
   if (busy) return getStatus();
+  busy = true;
+  void runRollback(targetHash);
+  return getStatus();
+}
+
+async function runRollback(targetHash: string) {
   if (!(await gitlib.isGitRepo())) {
-    setMessage("error", "No es un repositorio git.");
-    return getStatus();
+    await emit("error", "No es un repositorio git.", "error");
+    busy = false;
+    phase = "idle";
+    return;
   }
   if (!(await gitlib.commitExists(targetHash))) {
-    setMessage("error", "El commit indicado no existe.");
-    return getStatus();
+    await emit("error", "El commit indicado no existe.", "error");
+    busy = false;
+    phase = "idle";
+    return;
   }
-
-  busy = true;
   const prev = await gitlib.headHash();
   try {
+    await emit("downloading", `Cambiando a ${targetHash.slice(0, 7)}...`);
     await gitlib.checkout(targetHash);
+    await emit("building", "Compilando...");
     const build = await rebuild();
     if (!build.ok) {
+      await emit("reverting", "Ese commit no compila. Restaurando...", "error");
       await gitlib.checkout(prev);
       await rebuild();
       log({
@@ -315,12 +374,10 @@ export async function rollback(targetHash: string): Promise<UpdateStatus> {
         ok: false,
         detail: build.detail,
       });
-      setMessage(
-        "error",
-        "Ese commit no compila. Se mantuvo el estado actual.",
-      );
       busy = false;
-      return getStatus();
+      await emit("error", "No se pudo revertir: ese commit no compila.", "error");
+      phase = "idle";
+      return;
     }
     log({
       action: "rollback",
@@ -329,23 +386,19 @@ export async function rollback(targetHash: string): Promise<UpdateStatus> {
       ok: true,
       detail: "revertido y compilado",
     });
-    setMessage("success", "Revertido. Reiniciando el sistema...");
+    await emit("restarting", "Revertido. Reiniciando el sistema...", "success");
     busy = false;
     scheduleReload("Sistema revertido");
-    return getStatus();
   } catch (e) {
-    setMessage("error", `Fallo la reversion: ${(e as Error).message}`);
     busy = false;
-    return getStatus();
+    await emit("error", `Fallo la reversion: ${(e as Error).message}`, "error");
+    phase = "idle";
   }
 }
 
 // ---- Reinicio controlado ----
 function scheduleReload(reason: string) {
-  // Avisar a los clientes conectados para que se recarguen.
   reloadBroadcaster?.(reason);
-  // Dar un momento para que el mensaje salga y luego salir; el supervisor
-  // (wtm-server.sh / contenedor) reinicia el core con el codigo nuevo.
   setTimeout(() => {
     console.log(`[updater] ${reason}: reiniciando para aplicar cambios...`);
     process.exit(0);
@@ -364,13 +417,9 @@ export function startScheduler() {
     const cfg = getConfig();
     if (!cfg.autoUpdate || busy) return;
     const status = await check();
-    if (status.behind > 0) {
-      await update();
-    }
+    if (status.behind > 0) update();
   }, ms);
-  console.log(
-    `[updater] auto-update activo cada ${config.checkIntervalMin} min`,
-  );
+  console.log(`[updater] auto-update activo cada ${config.checkIntervalMin} min`);
 }
 
 export function restartScheduler() {

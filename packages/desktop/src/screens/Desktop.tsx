@@ -10,7 +10,7 @@ import { Terminal } from "../apps/Terminal";
 import { ModuleView } from "../apps/ModuleView";
 import { Inventario } from "../apps/Inventario";
 import { Actualizaciones } from "../apps/Actualizaciones";
-import { wsUrl } from "../lib/config";
+import { wsUrl, getServerUrl } from "../lib/config";
 import { getToken } from "../lib/api";
 
 export function Desktop() {
@@ -78,6 +78,30 @@ export function Desktop() {
     return () => clearTimeout(t);
   }, [toast]);
 
+  // Espera a que el core vuelva (tras reiniciarse por una actualizacion) y
+  // recarga el escritorio. Sondea /api/health hasta que responda.
+  function waitForCoreAndReload() {
+    let tries = 0;
+    const poll = async () => {
+      tries++;
+      try {
+        const r = await fetch(`${getServerUrl()}/api/health`, {
+          cache: "no-store",
+        });
+        if (r.ok) {
+          window.location.reload();
+          return;
+        }
+      } catch {
+        /* core aun reiniciando */
+      }
+      if (tries < 60) setTimeout(poll, 1000);
+      else window.location.reload();
+    };
+    // Dar margen a que el core cierre antes de empezar a sondear.
+    setTimeout(poll, 2000);
+  }
+
   // Escuchar eventos del sistema: cuando el core aplica una actualizacion,
   // avisa y el escritorio se recarga solo para tomar la version nueva.
   useEffect(() => {
@@ -92,8 +116,13 @@ export function Desktop() {
           const msg = JSON.parse(ev.data);
           if (msg.type === "system-reload") {
             setToast(`${msg.reason}. Recargando...`);
-            // El core se reinicia; esperamos y recargamos.
-            setTimeout(() => window.location.reload(), 2500);
+            // El core se reinicia; esperamos a que vuelva y recargamos.
+            waitForCoreAndReload();
+          } else if (msg.type === "update-progress") {
+            // Reenviar a quien escuche (el modulo Actualizaciones).
+            window.dispatchEvent(
+              new CustomEvent("wtm:update-progress", { detail: msg }),
+            );
           }
         } catch {
           /* ignorar */

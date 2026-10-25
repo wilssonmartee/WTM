@@ -1,13 +1,26 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { ModuleManifest } from "@wtm/shared";
 import type {
   CommitInfo,
   UpdateConfig,
   UpdateLogEntry,
+  UpdatePhase,
+  UpdateProgressEvent,
   UpdateStatus,
 } from "@wtm/shared";
 import { api } from "../lib/api";
 import { Icon } from "../components/Icon";
+
+const PHASE_LABEL: Record<UpdatePhase, string> = {
+  idle: "En reposo",
+  checking: "Revisando",
+  downloading: "Descargando",
+  building: "Compilando",
+  reverting: "Revirtiendo",
+  restarting: "Reiniciando",
+  done: "Completado",
+  error: "Error",
+};
 
 /**
  * Modulo de sistema "Actualizaciones": configurar GitHub, revisar y aplicar
@@ -22,6 +35,15 @@ export function Actualizaciones({ module }: { module: ModuleManifest }) {
     "estado",
   );
   const [error, setError] = useState("");
+  // Progreso en vivo (lineas que llegan por WebSocket desde el core).
+  const [progress, setProgress] = useState<UpdateProgressEvent[]>([]);
+  const progressEndRef = useRef<HTMLDivElement>(null);
+  const phase = status?.phase ?? "idle";
+  const running =
+    !!status?.busy ||
+    ["checking", "downloading", "building", "reverting", "restarting"].includes(
+      phase,
+    );
 
   // Formulario de configuracion.
   const [repo, setRepo] = useState("");
@@ -57,6 +79,22 @@ export function Actualizaciones({ module }: { module: ModuleManifest }) {
     if (tab === "registro") api.updateLog().then(setLog).catch(() => {});
   }, [tab, status]);
 
+  // Escuchar el progreso en vivo que reenvia el escritorio (WebSocket).
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const ev = (e as CustomEvent<UpdateProgressEvent>).detail;
+      setProgress((prev) => [...prev.slice(-200), ev]);
+      if (ev.status) setStatus(ev.status);
+    };
+    window.addEventListener("wtm:update-progress", handler);
+    return () => window.removeEventListener("wtm:update-progress", handler);
+  }, []);
+
+  // Auto-scroll del log de progreso.
+  useEffect(() => {
+    progressEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [progress]);
+
   async function saveConfig() {
     setError("");
     try {
@@ -74,9 +112,12 @@ export function Actualizaciones({ module }: { module: ModuleManifest }) {
     }
   }
 
-  async function run(fn: () => Promise<UpdateStatus>) {
+  async function run(fn: () => Promise<UpdateStatus>, clearProgress = false) {
     setError("");
+    if (clearProgress) setProgress([]);
     try {
+      // La operacion devuelve el estado inicial de inmediato; el progreso real
+      // llega por los eventos en vivo.
       setStatus(await fn());
     } catch (e) {
       setError(e instanceof Error ? e.message : "Error");
@@ -177,19 +218,74 @@ export function Actualizaciones({ module }: { module: ModuleManifest }) {
             <div style={{ display: "flex", gap: 8, margin: "16px 0" }}>
               <button
                 className="wtm-tool"
-                disabled={status?.busy}
-                onClick={() => run(api.updateCheck)}
+                disabled={running}
+                onClick={() => run(api.updateCheck, true)}
               >
                 Revisar ahora
               </button>
               <button
                 className="wtm-tool wtm-tool--primary"
-                disabled={status?.busy || (status?.behind ?? 0) === 0}
-                onClick={() => run(api.updateApply)}
+                disabled={running || (status?.behind ?? 0) === 0}
+                onClick={() => run(api.updateApply, true)}
               >
-                {status?.busy ? "Trabajando..." : "Actualizar ahora"}
+                {running ? "Trabajando..." : "Actualizar ahora"}
               </button>
             </div>
+
+            {/* Panel de progreso en vivo */}
+            {(running || progress.length > 0) && (
+              <div className="wtm-progress">
+                <div className="wtm-progress__phases">
+                  {(
+                    [
+                      "checking",
+                      "downloading",
+                      "building",
+                      "restarting",
+                    ] as UpdatePhase[]
+                  ).map((ph) => {
+                    const order: UpdatePhase[] = [
+                      "checking",
+                      "downloading",
+                      "building",
+                      "restarting",
+                    ];
+                    const cur = order.indexOf(phase as UpdatePhase);
+                    const idx = order.indexOf(ph);
+                    const state =
+                      phase === "error"
+                        ? idx <= cur
+                          ? "err"
+                          : "todo"
+                        : idx < cur || phase === "done"
+                          ? "done"
+                          : idx === cur
+                            ? "active"
+                            : "todo";
+                    return (
+                      <div
+                        key={ph}
+                        className={`wtm-phase wtm-phase--${state}`}
+                      >
+                        <span className="wtm-phase__dot" />
+                        {PHASE_LABEL[ph]}
+                      </div>
+                    );
+                  })}
+                </div>
+                <div className="wtm-progress__log">
+                  {progress.map((p, i) => (
+                    <div
+                      key={i}
+                      className={`wtm-progress__line wtm-progress__line--${p.level}`}
+                    >
+                      {p.line}
+                    </div>
+                  ))}
+                  <div ref={progressEndRef} />
+                </div>
+              </div>
+            )}
 
             <h3
               style={{
@@ -306,8 +402,11 @@ export function Actualizaciones({ module }: { module: ModuleManifest }) {
                       <button
                         className="wtm-tool"
                         style={{ padding: "3px 10px" }}
-                        disabled={status?.busy}
-                        onClick={() => run(() => api.updateRollback(c.hash))}
+                        disabled={running}
+                        onClick={() => {
+                          setTab("estado");
+                          run(() => api.updateRollback(c.hash), true);
+                        }}
                       >
                         Volver aqui
                       </button>
