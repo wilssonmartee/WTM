@@ -160,6 +160,60 @@ export const api = {
     return request<T>(`/api/m/${moduleId}${path}`, options);
   },
 
+  /**
+   * Sube bytes binarios a la API de un modulo, con progreso de subida.
+   * Usa XHR porque fetch no expone progreso de upload.
+   */
+  moduleUpload(
+    moduleId: string,
+    path: string,
+    bytes: Uint8Array,
+    onProgress?: (fraction: number) => void,
+  ): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const token = getToken();
+      const xhr = new XMLHttpRequest();
+      xhr.open("PUT", `${getServerUrl()}/api/m/${moduleId}${path}`);
+      xhr.setRequestHeader("Content-Type", "application/octet-stream");
+      if (token) xhr.setRequestHeader("Authorization", `Bearer ${token}`);
+      if (activeCompanyId)
+        xhr.setRequestHeader("X-WTM-Company", activeCompanyId);
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable && onProgress) onProgress(e.loaded / e.total);
+      };
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) resolve();
+        else {
+          try {
+            reject(new Error(JSON.parse(xhr.responseText).error || "Error"));
+          } catch {
+            reject(new Error(`Error ${xhr.status}`));
+          }
+        }
+      };
+      xhr.onerror = () => reject(new Error("Fallo de red al subir"));
+      // Enviamos el ArrayBuffer subyacente (XHR lo acepta como binario).
+      xhr.send(bytes.buffer as ArrayBuffer);
+    });
+  },
+
+  /** Descarga bytes binarios de la API de un modulo (o null si 404). */
+  async moduleDownload(
+    moduleId: string,
+    path: string,
+  ): Promise<Uint8Array | null> {
+    const token = getToken();
+    const res = await fetch(`${getServerUrl()}/api/m/${moduleId}${path}`, {
+      headers: {
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...(activeCompanyId ? { "X-WTM-Company": activeCompanyId } : {}),
+      },
+    });
+    if (res.status === 404) return null;
+    if (!res.ok) throw new Error(`Error ${res.status}`);
+    return new Uint8Array(await res.arrayBuffer());
+  },
+
   // --- Actualizaciones (GitHub) ---
   async updateStatus(): Promise<UpdateStatus> {
     return request("/api/update/status");

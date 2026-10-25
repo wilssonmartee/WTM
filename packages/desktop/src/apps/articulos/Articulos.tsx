@@ -17,154 +17,171 @@ import { Icon } from "../../components/Icon";
 import { ENCODINGS, normalizeText, type DbfTable } from "./dbf";
 import type { WorkerResponse } from "./dbf.worker";
 import { DataGrid } from "./DataGrid";
+import {
+  clearHandle,
+  ensureReadPermission,
+  gunzip,
+  gzip,
+  loadHandle,
+  saveHandle,
+  supportsFsAccess,
+} from "./fileStore";
 
 interface ColumnConfig {
-  name: string; // nombre real del campo DBF
-  alias: string; // sobrenombre a mostrar
+  name: string;
+  alias: string;
   visible: boolean;
-  order: number; // posicion
+  order: number;
 }
 interface SavedConfig {
   columns: ColumnConfig[];
   sortBy: string | null;
   sortDir: "asc" | "desc";
   encoding: string;
+  fileLabel: string; // etiqueta del archivo (nombre), informativa
 }
+
+type View = "datos" | "config";
 
 export function Articulos({ module }: { module: ModuleManifest }) {
   const { levelFor } = useAuth();
-  const canConfig = levelFor("articulos") >= 2; // nivel 2+ puede guardar config
+  const canConfig = levelFor("articulos") >= 2;
+
+  const [view, setView] = useState<View>("datos");
   const [table, setTable] = useState<DbfTable | null>(null);
-  // Indice de busqueda precalculado (texto normalizado por registro).
   const [searchIndex, setSearchIndex] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
-  const [fileName, setFileName] = useState("");
-  const [encoding, setEncoding] = useState("auto");
-  const [lastBuffer, setLastBuffer] = useState<ArrayBuffer | null>(null);
+  const [uploadPct, setUploadPct] = useState<number | null>(null);
+  const [statusMsg, setStatusMsg] = useState("");
   const [error, setError] = useState("");
+  const [encoding, setEncoding] = useState("auto");
   const [columns, setColumns] = useState<ColumnConfig[]>([]);
   const [sortBy, setSortBy] = useState<string | null>(null);
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [query, setQuery] = useState("");
-  const [showConfig, setShowConfig] = useState(false);
+  const [fileLabel, setFileLabel] = useState("");
+  const [hasHandle, setHasHandle] = useState(false);
   const [savedMsg, setSavedMsg] = useState("");
-  const fileRef = useRef<HTMLInputElement>(null);
+  const [selected, setSelected] = useState<Set<number>>(new Set());
+
   const savedConfigRef = useRef<SavedConfig | null>(null);
   const workerRef = useRef<Worker | null>(null);
+  const fallbackRef = useRef<HTMLInputElement>(null);
 
-  // Worker para parsear el DBF fuera del hilo principal (no congela la UI).
+  // Worker de parseo.
   useEffect(() => {
-    const worker = new Worker(
-      new URL("./dbf.worker.ts", import.meta.url),
-      { type: "module" },
-    );
+    const worker = new Worker(new URL("./dbf.worker.ts", import.meta.url), {
+      type: "module",
+    });
     workerRef.current = worker;
     return () => worker.terminate();
   }, []);
 
-  // Cargar config global guardada (columnas/alias/orden/encoding).
-  useEffect(() => {
-    api
-      .moduleCall<SavedConfig | null>("articulos", "/config")
-      .then((cfg) => {
-        if (cfg) {
-          savedConfigRef.current = cfg;
-          if (cfg.encoding) setEncoding(cfg.encoding);
-          if (cfg.sortBy) setSortBy(cfg.sortBy);
-          if (cfg.sortDir) setSortDir(cfg.sortDir);
-        }
-      })
-      .catch(() => {});
-  }, []);
-
-  /** Aplica una config guardada sobre los campos recien leidos. */
   const buildColumns = useCallback(
     (fields: { name: string }[], saved: SavedConfig | null): ColumnConfig[] => {
-      const savedByName = new Map(
-        (saved?.columns ?? []).map((c) => [c.name, c]),
-      );
-      const cols = fields.map((f, i) => {
-        const s = savedByName.get(f.name);
-        return {
-          name: f.name,
-          alias: s?.alias ?? f.name,
-          visible: s?.visible ?? true,
-          order: s?.order ?? i,
-        };
-      });
-      return cols.sort((a, b) => a.order - b.order);
+      const byName = new Map((saved?.columns ?? []).map((c) => [c.name, c]));
+      return fields
+        .map((f, i) => {
+          const s = byName.get(f.name);
+          return {
+            name: f.name,
+            alias: s?.alias ?? f.name,
+            visible: s?.visible ?? true,
+            order: s?.order ?? i,
+          };
+        })
+        .sort((a, b) => a.order - b.order);
     },
     [],
   );
 
-  async function onPickFile(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setError("");
-    try {
-      const buf = await file.arrayBuffer();
-      setLastBuffer(buf);
-      setFileName(file.name);
-      parseInto(buf, encoding);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "No se pudo leer el archivo");
-    }
-  }
+  // Parsea un ArrayBuffer con el worker.
+  const parseBuffer = useCallback(
+    (buf: ArrayBuffer, enc: string): Promise<void> =>
+      new Promise((resolve) => {
+        const worker = workerRef.current;
+        if (!worker) return resolve();
+        const copy = buf.slice(0);
+        const onMsg = (ev: MessageEvent<WorkerResponse>) => {
+          worker.removeEventListener("message", onMsg);
+          const r = ev.data;
+          if (!r.ok || !r.fields || !r.records) {
+            setError(r.error ?? "El archivo no parece un DBF valido");
+            resolve();
+            return;
+          }
+          setTable({
+            fields: r.fields,
+            records: r.records,
+            recordCount: r.recordCount ?? r.records.length,
+            encoding: r.encoding ?? enc,
+            detectedEncoding: r.detectedEncoding ?? enc,
+          });
+          setSearchIndex(r.searchIndex ?? []);
+          setColumns(buildColumns(r.fields, savedConfigRef.current));
+          if (enc === "auto" && r.encoding) setEncoding(r.encoding);
+          resolve();
+        };
+        worker.addEventListener("message", onMsg);
+        worker.postMessage({ buffer: copy, encoding: enc }, [copy]);
+      }),
+    [buildColumns],
+  );
 
-  function parseInto(buf: ArrayBuffer, enc: string) {
-    const worker = workerRef.current;
-    if (!worker) return;
-    setLoading(true);
-    setError("");
-    // Clonamos el buffer porque el worker lo transfiere (lo "consume").
-    const copy = buf.slice(0);
-    const onMsg = (ev: MessageEvent<WorkerResponse>) => {
-      worker.removeEventListener("message", onMsg);
-      setLoading(false);
-      const r = ev.data;
-      if (!r.ok || !r.fields || !r.records) {
-        setError(r.error ?? "El archivo no parece un DBF valido");
-        setTable(null);
-        return;
+  // --- Al abrir el modulo: cargar config + el DBF guardado en el core ---
+  useEffect(() => {
+    (async () => {
+      // Config guardada en el core (columnas/alias/orden/encoding/etiqueta).
+      const cfg = await api
+        .moduleCall<SavedConfig | null>("articulos", "/config")
+        .catch(() => null);
+      if (cfg) {
+        savedConfigRef.current = cfg;
+        if (cfg.encoding) setEncoding(cfg.encoding);
+        if (cfg.sortBy) setSortBy(cfg.sortBy);
+        if (cfg.sortDir) setSortDir(cfg.sortDir);
+        if (cfg.fileLabel) setFileLabel(cfg.fileLabel);
       }
-      setTable({
-        fields: r.fields,
-        records: r.records,
-        recordCount: r.recordCount ?? r.records.length,
-        encoding: r.encoding ?? enc,
-        detectedEncoding: r.detectedEncoding ?? enc,
-      });
-      setSearchIndex(r.searchIndex ?? []);
-      setColumns(buildColumns(r.fields, savedConfigRef.current));
-      if (enc === "auto" && r.encoding) setEncoding(r.encoding);
-    };
-    worker.addEventListener("message", onMsg);
-    worker.postMessage({ buffer: copy, encoding: enc }, [copy]);
-  }
+      // Handle local recordado?
+      const h = await loadHandle();
+      setHasHandle(!!h);
 
-  // Re-parsear al cambiar la codificacion (sin volver a elegir archivo).
-  function changeEncoding(enc: string) {
-    setEncoding(enc);
-    if (lastBuffer) parseInto(lastBuffer, enc);
-  }
+      // DBF guardado en el core -> mostrar de inmediato.
+      setLoading(true);
+      try {
+        const bytes = await api.moduleDownload("articulos", "/data");
+        if (bytes) {
+          const plain = await gunzip(bytes);
+          const ab = plain.buffer.slice(
+            plain.byteOffset,
+            plain.byteOffset + plain.byteLength,
+          ) as ArrayBuffer;
+          await parseBuffer(ab, cfg?.encoding ?? "auto");
+          setStatusMsg("Datos cargados desde el servidor.");
+        }
+      } catch {
+        /* sin datos guardados aun */
+      } finally {
+        setLoading(false);
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const visibleColumns = useMemo(
     () => columns.filter((c) => c.visible).sort((a, b) => a.order - b.order),
     [columns],
   );
 
-  // Filtrado rapido usando el indice de busqueda PRECALCULADO (en el worker).
-  // No volvemos a normalizar texto en cada tecla: solo comparamos substrings.
+  useEffect(() => setSelected(new Set()), [query, sortBy, sortDir, table]);
+
   const rows = useMemo(() => {
     if (!table) return [];
     let data = table.records;
     const q = normalizeText(query);
     if (q && searchIndex.length === data.length) {
       const terms = q.split(" ");
-      data = data.filter((_row, i) => {
-        const hay = searchIndex[i];
-        return terms.every((t) => hay.includes(t));
-      });
+      data = data.filter((_r, i) => terms.every((t) => searchIndex[i].includes(t)));
     }
     if (sortBy) {
       const dir = sortDir === "asc" ? 1 : -1;
@@ -176,10 +193,12 @@ export function Articulos({ module }: { module: ModuleManifest }) {
         if (bv == null) return dir;
         if (typeof av === "number" && typeof bv === "number")
           return (av - bv) * dir;
-        return String(av).localeCompare(String(bv), "es", {
-          sensitivity: "base",
-          numeric: true,
-        }) * dir;
+        return (
+          String(av).localeCompare(String(bv), "es", {
+            sensitivity: "base",
+            numeric: true,
+          }) * dir
+        );
       });
     }
     return data;
@@ -193,25 +212,132 @@ export function Articulos({ module }: { module: ModuleManifest }) {
     }
   }
 
-  async function saveConfig() {
-    const cfg: SavedConfig = { columns, sortBy, sortDir, encoding };
-    try {
-      await api.moduleCall("articulos", "/config", {
-        method: "PUT",
-        body: JSON.stringify(cfg),
-      });
-      savedConfigRef.current = cfg;
-      setSavedMsg("Configuracion guardada.");
-      setTimeout(() => setSavedMsg(""), 2500);
-    } catch (e) {
-      setSavedMsg(e instanceof Error ? e.message : "Error al guardar");
+  // --- Elegir archivo (config) ---
+  async function pickFile() {
+    setError("");
+    if (supportsFsAccess()) {
+      try {
+        const [handle] = await (
+          window as unknown as {
+            showOpenFilePicker: (o: unknown) => Promise<FileSystemFileHandle[]>;
+          }
+        ).showOpenFilePicker({
+          types: [{ description: "DBF", accept: { "application/octet-stream": [".dbf"] } }],
+        });
+        await saveHandle(handle);
+        setHasHandle(true);
+        setFileLabel(handle.name);
+        await persistConfig({ fileLabel: handle.name });
+        setSavedMsg(`Archivo configurado: ${handle.name}`);
+        setTimeout(() => setSavedMsg(""), 2500);
+      } catch {
+        /* el usuario cancelo */
+      }
+    } else {
+      fallbackRef.current?.click();
     }
   }
 
-  // Seleccion de filas (indices dentro de 'rows').
-  const [selected, setSelected] = useState<Set<number>>(new Set());
-  // Al cambiar el filtro/orden, limpiamos la seleccion (los indices cambian).
-  useEffect(() => setSelected(new Set()), [query, sortBy, sortDir, table]);
+  // Fallback (navegadores sin FS Access): input clasico, sin recordar handle.
+  async function onFallbackPick(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setFileLabel(file.name);
+    await persistConfig({ fileLabel: file.name });
+    const buf = await file.arrayBuffer();
+    await refreshWith(buf);
+  }
+
+  // --- Actualizar: releer archivo local -> parsear -> subir al core ---
+  async function refresh() {
+    setError("");
+    setStatusMsg("");
+    const h = await loadHandle();
+    if (!h) {
+      if (!supportsFsAccess()) {
+        // sin handle en fallback: pedir archivo
+        fallbackRef.current?.click();
+        return;
+      }
+      setError("No hay archivo configurado. Ve a Configuracion.");
+      return;
+    }
+    const ok = await ensureReadPermission(h);
+    if (!ok) {
+      setError("Permiso denegado para leer el archivo.");
+      return;
+    }
+    const file = await h.getFile();
+    const buf = await file.arrayBuffer();
+    await refreshWith(buf);
+  }
+
+  async function refreshWith(buf: ArrayBuffer) {
+    setLoading(true);
+    await parseBuffer(buf, encoding);
+    setLoading(false);
+    setView("datos");
+    // Subir comprimido al core en segundo plano, con barra de progreso.
+    uploadToCore(buf);
+  }
+
+  async function uploadToCore(buf: ArrayBuffer) {
+    if (!canConfig) return; // solo nivel 2+ persiste en el servidor
+    try {
+      setUploadPct(0);
+      const compressed = await gzip(new Uint8Array(buf));
+      await api.moduleUpload("articulos", "/data", compressed, (f) =>
+        setUploadPct(Math.round(f * 100)),
+      );
+      setUploadPct(100);
+      setStatusMsg("Copia guardada en el servidor.");
+      setTimeout(() => setUploadPct(null), 1200);
+    } catch (e) {
+      setUploadPct(null);
+      setStatusMsg(
+        "No se pudo guardar en el servidor: " +
+          (e instanceof Error ? e.message : "error"),
+      );
+    }
+  }
+
+  function changeEncoding(enc: string) {
+    setEncoding(enc);
+    // re-aplicar sobre los datos ya cargados no es trivial sin el buffer;
+    // el usuario puede pulsar Actualizar para releer con la nueva codificacion.
+  }
+
+  async function persistConfig(extra: Partial<SavedConfig> = {}) {
+    if (!canConfig) return;
+    const cfg: SavedConfig = {
+      columns,
+      sortBy,
+      sortDir,
+      encoding,
+      fileLabel,
+      ...extra,
+    };
+    savedConfigRef.current = cfg;
+    await api
+      .moduleCall("articulos", "/config", {
+        method: "PUT",
+        body: JSON.stringify(cfg),
+      })
+      .catch(() => {});
+  }
+
+  async function saveConfigNow() {
+    await persistConfig();
+    setSavedMsg("Configuracion guardada.");
+    setTimeout(() => setSavedMsg(""), 2500);
+  }
+
+  async function forgetFile() {
+    await clearHandle();
+    setHasHandle(false);
+    setFileLabel("");
+    await persistConfig({ fileLabel: "" });
+  }
 
   return (
     <ModuleShell moduleId="articulos">
@@ -219,104 +345,219 @@ export function Articulos({ module }: { module: ModuleManifest }) {
         icon={<Icon name={module.icon} size={20} />}
         color={module.color}
         title="Articulos"
-        subtitle="Lee un DBF local: elige columnas, ordena y busca"
+        subtitle="Lee un DBF local: columnas, orden y busqueda"
       />
 
       <Toolbar>
-        <Button variant="primary" onClick={() => fileRef.current?.click()}>
-          Abrir DBF...
-        </Button>
-        <input
-          ref={fileRef}
-          type="file"
-          accept=".dbf,.DBF"
-          style={{ display: "none" }}
-          onChange={onPickFile}
-        />
-        <span style={{ fontSize: 12, color: "var(--wtm-text-dim)" }}>
-          Codificacion
-        </span>
-        <Select
-          value={encoding}
-          onChange={(e) => changeEncoding(e.target.value)}
-          style={{ width: 190 }}
+        <Button
+          variant={view === "datos" ? "primary" : "default"}
+          onClick={() => setView("datos")}
         >
-          {ENCODINGS.map((en) => (
-            <option key={en.id} value={en.id}>
-              {en.label}
-              {en.id === "auto" && table
-                ? ` (${table.detectedEncoding})`
-                : ""}
-            </option>
-          ))}
-        </Select>
-        {table && (
-          <Button onClick={() => setShowConfig((s) => !s)}>
-            {showConfig ? "Ocultar columnas" : "Columnas"}
+          Datos
+        </Button>
+        <Button
+          variant={view === "config" ? "primary" : "default"}
+          onClick={() => setView("config")}
+        >
+          Configuracion
+        </Button>
+        <Spacer />
+        {view === "datos" && (
+          <Button variant="primary" onClick={refresh} disabled={loading}>
+            {loading ? "Cargando..." : "Actualizar"}
           </Button>
         )}
-        <Spacer />
-        {table && canConfig && (
-          <Button onClick={saveConfig}>Guardar config</Button>
-        )}
       </Toolbar>
+
+      {/* Barra de progreso de subida al servidor */}
+      {uploadPct !== null && (
+        <div className="ui-upload">
+          <div className="ui-upload__label">
+            Subiendo al servidor... {uploadPct}%
+          </div>
+          <div className="ui-upload__bar">
+            <div
+              className="ui-upload__fill"
+              style={{ width: `${uploadPct}%` }}
+            />
+          </div>
+        </div>
+      )}
 
       <ModuleBody>
         {error && <Notice tone="error">{error}</Notice>}
         {savedMsg && <Notice tone="success">{savedMsg}</Notice>}
-        {loading && <Notice>Procesando el archivo... un momento.</Notice>}
 
-        {!table && !loading && (
-          <Notice>
-            Pulsa "Abrir DBF..." y elige un archivo .dbf de tu equipo. El archivo
-            se procesa localmente en tu navegador; no se sube a ningun servidor.
-          </Notice>
-        )}
+        <input
+          ref={fallbackRef}
+          type="file"
+          accept=".dbf,.DBF"
+          style={{ display: "none" }}
+          onChange={onFallbackPick}
+        />
 
-        {table && (
+        {view === "config" ? (
+          <ConfigView
+            canConfig={canConfig}
+            fileLabel={fileLabel}
+            hasHandle={hasHandle}
+            encoding={encoding}
+            onEncoding={changeEncoding}
+            onPick={pickFile}
+            onForget={forgetFile}
+            columns={columns}
+            setColumns={setColumns}
+            onSave={saveConfigNow}
+            fsSupported={supportsFsAccess()}
+          />
+        ) : (
           <>
-            {/* Buscador + resumen */}
-            <div
-              className="ui-row"
-              style={{ marginBottom: 12, alignItems: "center" }}
-            >
-              <Input
-                placeholder="Buscar (ignora tildes y enies)..."
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                style={{ maxWidth: 360 }}
-              />
-              <span style={{ fontSize: 12, color: "var(--wtm-text-dim)" }}>
-                {fileName} · {rows.length.toLocaleString()} de{" "}
-                {table.recordCount.toLocaleString()} registros
-                {selected.size > 0
-                  ? ` · ${selected.size.toLocaleString()} seleccionado(s)`
-                  : ""}
-              </span>
-            </div>
-
-            {/* Panel de configuracion de columnas */}
-            {showConfig && (
-              <ColumnEditor columns={columns} setColumns={setColumns} />
+            {loading && <Notice>Procesando...</Notice>}
+            {statusMsg && !loading && <Notice>{statusMsg}</Notice>}
+            {!table && !loading && (
+              <Notice>
+                No hay datos. Ve a <b>Configuracion</b>, elige tu archivo DBF y
+                pulsa <b>Actualizar</b>.
+              </Notice>
             )}
-
-            {/* Tabla virtualizada y seleccionable */}
-            <DataGrid
-              columns={visibleColumns.map((c) => ({
-                name: c.name,
-                alias: c.alias,
-              }))}
-              rows={rows}
-              sortBy={sortBy}
-              sortDir={sortDir}
-              onSort={toggleSort}
-              selected={selected}
-              setSelected={setSelected}
-            />
+            {table && (
+              <>
+                <div
+                  className="ui-row"
+                  style={{ marginBottom: 12, alignItems: "center" }}
+                >
+                  <Input
+                    placeholder="Buscar (ignora tildes y enies)..."
+                    value={query}
+                    onChange={(e) => setQuery(e.target.value)}
+                    style={{ maxWidth: 360 }}
+                  />
+                  <span style={{ fontSize: 12, color: "var(--wtm-text-dim)" }}>
+                    {fileLabel || "DBF"} ·{" "}
+                    {rows.length.toLocaleString()} de{" "}
+                    {table.recordCount.toLocaleString()} registros
+                    {selected.size > 0
+                      ? ` · ${selected.size.toLocaleString()} seleccionado(s)`
+                      : ""}
+                  </span>
+                </div>
+                <DataGrid
+                  columns={visibleColumns.map((c) => ({
+                    name: c.name,
+                    alias: c.alias,
+                  }))}
+                  rows={rows}
+                  sortBy={sortBy}
+                  sortDir={sortDir}
+                  onSort={toggleSort}
+                  selected={selected}
+                  setSelected={setSelected}
+                />
+              </>
+            )}
           </>
         )}
       </ModuleBody>
     </ModuleShell>
+  );
+}
+
+// ================= Vista de configuracion =================
+function ConfigView({
+  canConfig,
+  fileLabel,
+  hasHandle,
+  encoding,
+  onEncoding,
+  onPick,
+  onForget,
+  columns,
+  setColumns,
+  onSave,
+  fsSupported,
+}: {
+  canConfig: boolean;
+  fileLabel: string;
+  hasHandle: boolean;
+  encoding: string;
+  onEncoding: (e: string) => void;
+  onPick: () => void;
+  onForget: () => void;
+  columns: ColumnConfig[];
+  setColumns: (c: ColumnConfig[]) => void;
+  onSave: () => void;
+  fsSupported: boolean;
+}) {
+  return (
+    <div style={{ maxWidth: 620 }}>
+      {!canConfig && (
+        <Notice>Necesitas nivel 2+ para configurar este modulo.</Notice>
+      )}
+
+      <h3 style={h3}>Archivo DBF</h3>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 10,
+          flexWrap: "wrap",
+        }}
+      >
+        <Button variant="primary" onClick={onPick} disabled={!canConfig}>
+          {fileLabel ? "Cambiar archivo..." : "Elegir archivo DBF..."}
+        </Button>
+        <span style={{ fontSize: 13 }}>
+          {fileLabel ? (
+            <>
+              <b>{fileLabel}</b>{" "}
+              {hasHandle && fsSupported && (
+                <span style={{ color: "#2f7d4f" }}>· recordado</span>
+              )}
+            </>
+          ) : (
+            <span style={{ color: "var(--wtm-text-dim)" }}>
+              Ningun archivo configurado
+            </span>
+          )}
+        </span>
+        {fileLabel && (
+          <Button variant="ghost" onClick={onForget} disabled={!canConfig}>
+            Olvidar
+          </Button>
+        )}
+      </div>
+      {!fsSupported && (
+        <Notice>
+          Tu navegador no recuerda archivos; tendras que elegirlo cada vez.
+          Usa el cliente de escritorio o Chrome/Edge para recordarlo.
+        </Notice>
+      )}
+
+      <h3 style={h3}>Codificacion</h3>
+      <Select
+        value={encoding}
+        onChange={(e) => onEncoding(e.target.value)}
+        style={{ width: 220 }}
+        disabled={!canConfig}
+      >
+        {ENCODINGS.map((en) => (
+          <option key={en.id} value={en.id}>
+            {en.label}
+          </option>
+        ))}
+      </Select>
+
+      <h3 style={h3}>Columnas (visibilidad, nombre a mostrar, orden)</h3>
+      <ColumnEditor columns={columns} setColumns={setColumns} />
+
+      {canConfig && (
+        <div style={{ marginTop: 16 }}>
+          <Button variant="primary" onClick={onSave}>
+            Guardar configuracion
+          </Button>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -329,7 +570,6 @@ function ColumnEditor({
   setColumns: (c: ColumnConfig[]) => void;
 }) {
   const ordered = [...columns].sort((a, b) => a.order - b.order);
-
   function update(name: string, patch: Partial<ColumnConfig>) {
     setColumns(columns.map((c) => (c.name === name ? { ...c, ...patch } : c)));
   }
@@ -341,78 +581,67 @@ function ColumnEditor({
     [arr[i].order, arr[j].order] = [arr[j].order, arr[i].order];
     setColumns([...arr]);
   }
-
+  if (columns.length === 0) {
+    return (
+      <Notice>Abre un archivo para configurar sus columnas.</Notice>
+    );
+  }
   return (
-    <div
-      style={{
-        border: "1px solid var(--wtm-border)",
-        borderRadius: "var(--wtm-radius)",
-        padding: 12,
-        marginBottom: 14,
-        background: "var(--wtm-surface)",
-      }}
-    >
-      <div
-        style={{
-          fontSize: 12,
-          fontWeight: 600,
-          color: "var(--wtm-text-dim)",
-          marginBottom: 8,
-        }}
-      >
-        COLUMNAS (visibilidad, nombre a mostrar, orden)
-      </div>
-      <div style={{ display: "grid", gap: 6 }}>
-        {ordered.map((c) => (
-          <div
-            key={c.name}
-            style={{ display: "flex", alignItems: "center", gap: 8 }}
+    <div style={{ display: "grid", gap: 6 }}>
+      {ordered.map((c) => (
+        <div key={c.name} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <input
+            type="checkbox"
+            checked={c.visible}
+            onChange={(e) => update(c.name, { visible: e.target.checked })}
+            title="Mostrar"
+          />
+          <span
+            style={{
+              width: 120,
+              fontSize: 12,
+              color: "var(--wtm-text-dim)",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+            }}
+            title={c.name}
           >
-            <input
-              type="checkbox"
-              checked={c.visible}
-              onChange={(e) => update(c.name, { visible: e.target.checked })}
-              title="Mostrar"
-            />
-            <span
-              style={{
-                width: 120,
-                fontSize: 12,
-                color: "var(--wtm-text-dim)",
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-                whiteSpace: "nowrap",
-              }}
-              title={c.name}
-            >
-              {c.name}
-            </span>
-            <input
-              className="ui-input"
-              value={c.alias}
-              onChange={(e) => update(c.name, { alias: e.target.value })}
-              placeholder="Nombre a mostrar"
-              style={{ flex: 1, maxWidth: 240, padding: "4px 8px" }}
-            />
-            <button
-              className="ui-btn ui-btn--ghost"
-              style={{ padding: "2px 8px" }}
-              onClick={() => move(c.name, -1)}
-              title="Subir"
-            >
-              ▲
-            </button>
-            <button
-              className="ui-btn ui-btn--ghost"
-              style={{ padding: "2px 8px" }}
-              onClick={() => move(c.name, 1)}
-              title="Bajar"
-            >
-              ▼
-            </button>
-          </div>
-        ))}
-      </div>
+            {c.name}
+          </span>
+          <input
+            className="ui-input"
+            value={c.alias}
+            onChange={(e) => update(c.name, { alias: e.target.value })}
+            placeholder="Nombre a mostrar"
+            style={{ flex: 1, maxWidth: 240, padding: "4px 8px" }}
+          />
+          <button
+            className="ui-btn ui-btn--ghost"
+            style={{ padding: "2px 8px" }}
+            onClick={() => move(c.name, -1)}
+            title="Subir"
+          >
+            ▲
+          </button>
+          <button
+            className="ui-btn ui-btn--ghost"
+            style={{ padding: "2px 8px" }}
+            onClick={() => move(c.name, 1)}
+            title="Bajar"
+          >
+            ▼
+          </button>
+        </div>
+      ))}
     </div>
   );
 }
+
+const h3: React.CSSProperties = {
+  fontSize: 12,
+  textTransform: "uppercase",
+  letterSpacing: "0.06em",
+  color: "var(--wtm-text-dim)",
+  margin: "20px 0 10px",
+};
