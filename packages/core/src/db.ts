@@ -64,6 +64,14 @@ function migrate() {
       value TEXT NOT NULL
     );
 
+    -- Layout del escritorio por usuario (ventanas abiertas, tamano, posicion).
+    -- Asi el usuario encuentra su escritorio igual desde cualquier dispositivo.
+    CREATE TABLE IF NOT EXISTS user_layouts (
+      user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+      layout  TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+
     -- Registro de auditoria de las actualizaciones por git.
     CREATE TABLE IF NOT EXISTS update_log (
       id          INTEGER PRIMARY KEY AUTOINCREMENT,

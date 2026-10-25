@@ -6,7 +6,7 @@ import fs from "node:fs";
 import { fileURLToPath } from "node:url";
 import { WebSocketServer } from "ws";
 import { config } from "./config.js";
-import { initDb } from "./db.js";
+import { initDb, db } from "./db.js";
 import {
   login,
   requireAuth,
@@ -60,6 +60,32 @@ app.get("/api/auth/me", requireAuth, (req: AuthedRequest, res) => {
     ok: true,
     data: { user, companies: companiesForUser(user.id) },
   });
+});
+
+// --- Layout del escritorio por usuario (ventanas abiertas) ---
+app.get("/api/layout", requireAuth, (req: AuthedRequest, res) => {
+  const row = db
+    .prepare("SELECT layout FROM user_layouts WHERE user_id = ?")
+    .get(req.user!.id) as { layout: string } | undefined;
+  let data: unknown = { windows: [] };
+  if (row) {
+    try {
+      data = JSON.parse(row.layout);
+    } catch {
+      data = { windows: [] };
+    }
+  }
+  res.json({ ok: true, data });
+});
+
+app.put("/api/layout", requireAuth, (req: AuthedRequest, res) => {
+  const layout = req.body ?? { windows: [] };
+  db.prepare(
+    `INSERT INTO user_layouts (user_id, layout, updated_at)
+     VALUES (?, ?, ?)
+     ON CONFLICT(user_id) DO UPDATE SET layout = excluded.layout, updated_at = excluded.updated_at`,
+  ).run(req.user!.id, JSON.stringify(layout), new Date().toISOString());
+  res.json({ ok: true, data: layout });
 });
 
 // --- Modulos ---

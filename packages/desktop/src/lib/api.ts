@@ -3,6 +3,7 @@ import type {
   AuthSession,
   Company,
   CommitInfo,
+  DesktopLayout,
   ModuleInfo,
   UpdateConfig,
   UpdateLogEntry,
@@ -110,6 +111,17 @@ export const api = {
     return request("/api/update/rollback", {
       method: "POST",
       body: JSON.stringify({ hash }),
+    });
+  },
+
+  // --- Layout del escritorio (por usuario, en el servidor) ---
+  async getLayout(): Promise<DesktopLayout> {
+    return request("/api/layout");
+  },
+  async saveLayout(layout: DesktopLayout): Promise<DesktopLayout> {
+    return request("/api/layout", {
+      method: "PUT",
+      body: JSON.stringify(layout),
     });
   },
 };

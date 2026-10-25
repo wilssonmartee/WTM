@@ -456,6 +456,10 @@ button {
   background: rgba(255, 255, 255, 0.04);
   border-color: var(--wtm-border);
 }
+.wtm-deskicon--selected {
+  background: rgba(59, 130, 246, 0.18);
+  border-color: var(--wtm-accent);
+}
 .wtm-deskicon__glyph {
   width: 38px;
   height: 38px;
@@ -928,4 +932,27 @@ button {
 }
 .wtm-progress__line--error {
   color: #f87171;
+}
+
+/* --- Boton de organizar en la bandeja --- */
+.wtm-tray__btn {
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border: 1px solid transparent;
+  border-radius: var(--wtm-radius);
+  background: transparent;
+  color: var(--wtm-text-dim);
+}
+.wtm-tray__btn:hover {
+  background: var(--wtm-surface);
+  color: var(--wtm-text);
+  border-color: var(--wtm-border);
+}
+
+/* Menu de organizar ventanas: un poco mas ancho y centrado a la derecha. */
+.wtm-menu--arrange {
+  right: 54px;
+  width: 210px;
 }

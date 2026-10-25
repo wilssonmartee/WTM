@@ -26,11 +26,13 @@ export function Desktop() {
   const [launcherOpen, setLauncherOpen] = useState(false);
   const [userMenu, setUserMenu] = useState(false);
   const [search, setSearch] = useState("");
+  const [arrangeOpen, setArrangeOpen] = useState(false);
+  const [selectedIcon, setSelectedIcon] = useState<string | null>(null);
   const [clock, setClock] = useState(new Date());
   const [busy, setBusy] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
-  const wm = useWindows(user?.id ?? null, modules);
   const taskbarH = appearance.taskbarHeight;
+  const wm = useWindows(user?.id ?? null, modules, taskbarH);
   const isSuperadmin = user?.globalRole === "superadmin";
 
   useEffect(() => {
@@ -175,6 +177,8 @@ export function Desktop() {
       onClick={() => {
         setLauncherOpen(false);
         setUserMenu(false);
+        setArrangeOpen(false);
+        setSelectedIcon(null);
       }}
     >
       {/* Iconos del escritorio */}
@@ -182,8 +186,14 @@ export function Desktop() {
         {deskIcons.map((m) => (
           <button
             key={m.id}
-            className="wtm-deskicon"
-            onDoubleClick={() => openModule(m)}
+            className={`wtm-deskicon ${
+              selectedIcon === m.id ? "wtm-deskicon--selected" : ""
+            }`}
+            onClick={() => setSelectedIcon(m.id)}
+            onDoubleClick={() => {
+              setSelectedIcon(null);
+              openModule(m);
+            }}
             title={`Abrir ${m.name}`}
           >
             <span
@@ -343,6 +353,62 @@ export function Desktop() {
         </div>
       )}
 
+      {/* Menu de organizar ventanas (tipo Snap de Windows) */}
+      {arrangeOpen && (
+        <div
+          className="wtm-menu wtm-menu--arrange"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="wtm-menu__head">Organizar ventanas</div>
+          <div className="wtm-menu__sep" />
+          <button
+            className="wtm-menu__item"
+            onClick={() => {
+              wm.arrange("left");
+              setArrangeOpen(false);
+            }}
+          >
+            Acoplar a la izquierda
+          </button>
+          <button
+            className="wtm-menu__item"
+            onClick={() => {
+              wm.arrange("right");
+              setArrangeOpen(false);
+            }}
+          >
+            Acoplar a la derecha
+          </button>
+          <button
+            className="wtm-menu__item"
+            onClick={() => {
+              wm.arrange("grid");
+              setArrangeOpen(false);
+            }}
+          >
+            Mosaico (cuadricula)
+          </button>
+          <button
+            className="wtm-menu__item"
+            onClick={() => {
+              wm.arrange("cascade");
+              setArrangeOpen(false);
+            }}
+          >
+            Cascada
+          </button>
+          <button
+            className="wtm-menu__item"
+            onClick={() => {
+              wm.arrange("maximize-all");
+              setArrangeOpen(false);
+            }}
+          >
+            Maximizar todo
+          </button>
+        </div>
+      )}
+
       {/* Barra de tareas */}
       <div className="wtm-taskbar" onClick={(e) => e.stopPropagation()}>
         <button
@@ -388,6 +454,18 @@ export function Desktop() {
         </div>
 
         <div className="wtm-tray">
+          {wm.windows.some((w) => !w.minimized) && (
+            <button
+              className="wtm-tray__btn"
+              title="Organizar ventanas"
+              onClick={(e) => {
+                e.stopPropagation();
+                setArrangeOpen((o) => !o);
+              }}
+            >
+              <Icon name="grid" size={15} />
+            </button>
+          )}
           <div className="wtm-tray__clock">
             <div>{clock.toLocaleTimeString("es", { hour: "2-digit", minute: "2-digit" })}</div>
             <div style={{ fontSize: 10 }}>

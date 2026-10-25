@@ -247,6 +247,26 @@ export interface SystemReloadEvent {
   reason: string;
 }
 
+// ===================================================================
+//  Estado del escritorio por usuario (ventanas abiertas)
+// ===================================================================
+
+/** Una ventana guardada en el layout del usuario. */
+export interface SavedWindow {
+  moduleId: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  maximized: boolean;
+  minimized: boolean;
+}
+
+/** Layout del escritorio de un usuario (se guarda en el servidor). */
+export interface DesktopLayout {
+  windows: SavedWindow[];
+}
+
 /** Fases de una operacion de actualizacion/reversion. */
 export type UpdatePhase =
   | "idle"
