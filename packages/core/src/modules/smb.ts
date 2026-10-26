@@ -59,13 +59,30 @@ async function loadSmb2(): Promise<Smb2Ctor> {
 function makeClient(conn: SmbConnection, Smb2: Smb2Ctor): Smb2Like {
   // @marsaud/smb2 toma el share completo en formato UNC: \\host\share
   const share = `\\\\${conn.host}\\${conn.share}`;
-  return new Smb2({
+  const client = new Smb2({
     share,
     domain: conn.domain || "",
     username: conn.username,
     password: conn.password,
     autoCloseTimeout: 0,
   });
+  // Blindaje CRITICO: el cliente SMB es un EventEmitter cuyo socket puede
+  // emitir 'error' (host caido, auth fallida, conexion cerrada). Sin un
+  // listener de 'error', Node lanza la excepcion y TUMBA el proceso entero
+  // (eso es lo que el navegador ve como "Failed to fetch"). Adjuntamos un
+  // listener no-op: el error real ya se propaga por el callback de cada
+  // operacion, que lo convierte en una respuesta de error limpia.
+  try {
+    (client as unknown as { on?: (ev: string, cb: () => void) => void }).on?.(
+      "error",
+      () => {
+        /* ignorado: el error se maneja en el callback de la operacion */
+      },
+    );
+  } catch {
+    /* si no es EventEmitter, seguimos */
+  }
+  return client;
 }
 
 /**

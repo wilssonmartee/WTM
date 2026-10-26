@@ -27,6 +27,17 @@ import * as updater from "./updater/service.js";
 import * as admin from "./admin.js";
 import { WTM_VERSION } from "@wtm/shared";
 
+// Blindaje: un error no capturado (p.ej. un socket SMB que emite 'error' sin
+// listener, o una promesa rechazada) NO debe tumbar el core. Lo registramos y
+// seguimos; asi los endpoints devuelven error en vez de cortar la conexion
+// (que en el navegador aparece como "Failed to fetch").
+process.on("uncaughtException", (err) => {
+  console.error("[core] uncaughtException:", err);
+});
+process.on("unhandledRejection", (reason) => {
+  console.error("[core] unhandledRejection:", reason);
+});
+
 initDb();
 initRegistry();
 updater.startScheduler();
