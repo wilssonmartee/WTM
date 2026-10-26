@@ -440,9 +440,15 @@ export function Articulos({ module }: { module: ModuleManifest }) {
       {progress && (
         <div className="ui-upload">
           <div className="ui-upload__label">
-            {progressLabel(progress.phase)}
-            {progress.percent !== null ? ` ${progress.percent}%` : ""}
-            {progress.detail ? ` — ${progress.detail}` : ""}
+            <span className="ui-upload__phase">
+              {progressLabel(progress.phase)}
+            </span>
+            {progress.detail && (
+              <span className="ui-upload__detail">— {progress.detail}</span>
+            )}
+            {progress.percent !== null && (
+              <span className="ui-upload__pct">{progress.percent}%</span>
+            )}
           </div>
           <div className="ui-upload__bar">
             <div
@@ -454,7 +460,7 @@ export function Articulos({ module }: { module: ModuleManifest }) {
               style={
                 progress.percent === null
                   ? undefined
-                  : { width: `${progress.percent}%` }
+                  : { width: `${Math.max(progress.percent, 3)}%` }
               }
             />
           </div>

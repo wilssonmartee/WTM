@@ -1620,41 +1620,118 @@ button {
   color: var(--wtm-text-dim);
 }
 
-/* --- Barra de progreso de subida (modulo Articulos) --- */
+/* --- Barra de progreso (modulo Articulos) — estilo Aero Windows 7 --- */
 .ui-upload {
-  padding: 8px 18px 12px;
+  padding: 10px 18px 14px;
   border-bottom: 1px solid var(--wtm-border);
   background: var(--wtm-surface);
 }
 .ui-upload__label {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
   font-size: 12px;
-  color: var(--wtm-text-dim);
-  margin-bottom: 5px;
+  color: var(--wtm-text);
+  margin-bottom: 6px;
 }
+/* Canal de la barra: hundido, con sombra interior (look Aero). */
 .ui-upload__bar {
-  height: 8px;
-  border-radius: 6px;
-  background: var(--wtm-bg);
-  border: 1px solid var(--wtm-border);
+  position: relative;
+  height: 20px;
+  border-radius: 10px;
+  background: linear-gradient(180deg, #d4d9de, #eef1f4 55%, #ffffff);
+  border: 1px solid #a9b2bc;
+  box-shadow:
+    inset 0 1px 2px rgba(0, 0, 0, 0.22),
+    0 1px 0 rgba(255, 255, 255, 0.6);
   overflow: hidden;
 }
+/* Relleno verde brillante clasico de Win7, con volumen (degradado vertical). */
 .ui-upload__fill {
+  position: relative;
   height: 100%;
-  background: linear-gradient(180deg, #4aa3e8, #1e76cc);
-  transition: width 0.15s;
+  min-width: 10px;
+  border-radius: 9px;
+  background: linear-gradient(
+    180deg,
+    #a6f0a0 0%,
+    #4fd04a 45%,
+    #16b013 55%,
+    #0d8a1f 100%
+  );
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.75),
+    inset 0 -2px 3px rgba(0, 0, 0, 0.18);
+  transition: width 0.2s ease;
+  overflow: hidden;
+}
+/* Brillo diagonal que recorre el relleno (el "shimmer" de Aero). */
+.ui-upload__fill::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  width: 55px;
+  background: linear-gradient(
+    100deg,
+    rgba(255, 255, 255, 0) 0%,
+    rgba(255, 255, 255, 0.55) 50%,
+    rgba(255, 255, 255, 0) 100%
+  );
+  transform: skewX(-18deg);
+  animation: wtm-shimmer 1.3s linear infinite;
+}
+/* Porcentaje grande a la derecha de la etiqueta. */
+.ui-upload__pct {
+  margin-left: auto;
+  font-size: 13px;
+  font-weight: 700;
+  color: #0d8a1f;
+  font-variant-numeric: tabular-nums;
+}
+.ui-upload__phase {
+  font-weight: 600;
+}
+.ui-upload__detail {
+  color: var(--wtm-text-dim);
 }
 
-/* Barra indeterminada: no sabemos el %, mostramos un bloque que se desplaza. */
+@keyframes wtm-shimmer {
+  0% {
+    left: -60px;
+  }
+  100% {
+    left: 100%;
+  }
+}
+
+/* Barra indeterminada: no sabemos el %, un bloque verde que recorre el canal. */
 .ui-upload__fill--indeterminate {
-  width: 35%;
-  border-radius: 6px;
-  animation: wtm-indeterminate 1.1s ease-in-out infinite;
+  width: 40%;
+  animation:
+    wtm-indeterminate 1.2s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+.ui-upload__fill--indeterminate::after {
+  animation: none; /* el shimmer no aporta en modo indeterminado */
 }
 @keyframes wtm-indeterminate {
   0% {
-    margin-left: -35%;
+    margin-left: -40%;
   }
   100% {
     margin-left: 100%;
   }
+}
+
+/* Modo oscuro: canal mas oscuro, verde igual de vivo. */
+[data-mode="dark"] .ui-upload__bar {
+  background: linear-gradient(180deg, #1b2027, #242b33);
+  border-color: #3a434e;
+  box-shadow:
+    inset 0 1px 3px rgba(0, 0, 0, 0.55),
+    0 1px 0 rgba(255, 255, 255, 0.05);
+}
+[data-mode="dark"] .ui-upload__pct {
+  color: #5fe05a;
 }
