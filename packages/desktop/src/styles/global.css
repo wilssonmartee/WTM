@@ -734,6 +734,16 @@ button {
   box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.8),
     inset 0 -2px 3px rgba(0, 40, 90, 0.5), 0 0 5px rgba(90, 180, 255, 0.6);
 }
+/* Logo personalizado del boton de inicio (imagen en vez de la inicial). */
+.wtm-start__logo {
+  width: 28px;
+  height: 28px;
+  object-fit: contain;
+  display: block;
+  filter: drop-shadow(0 0 3px rgba(90, 180, 255, 0.5));
+  user-select: none;
+  -webkit-user-drag: none;
+}
 .wtm-taskbar__sep {
   width: 1px;
   height: 26px;

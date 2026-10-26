@@ -30,6 +30,37 @@ function snapPreviewStyle(
   return { left: g.x, top: g.y, width: g.width, height: g.height };
 }
 
+/**
+ * Estilo del fondo de pantalla del escritorio. Si hay wallpaper configurado,
+ * lo aplica segun el ajuste de encaje; si no, deja el degradado por defecto
+ * (definido en CSS). "tile" repite la imagen; el resto la muestra una vez.
+ */
+function wallpaperStyle(a: {
+  wallpaper?: string;
+  wallpaperFit?: "cover" | "contain" | "tile" | "center";
+}): React.CSSProperties {
+  if (!a.wallpaper) return {};
+  const url = `url("${a.wallpaper}")`;
+  if (a.wallpaperFit === "tile") {
+    return {
+      backgroundImage: url,
+      backgroundRepeat: "repeat",
+      backgroundSize: "auto",
+    };
+  }
+  return {
+    backgroundImage: url,
+    backgroundRepeat: "no-repeat",
+    backgroundPosition: "center",
+    backgroundSize:
+      a.wallpaperFit === "contain"
+        ? "contain"
+        : a.wallpaperFit === "center"
+          ? "auto"
+          : "cover",
+  };
+}
+
 export function Desktop() {
   const {
     user,
@@ -279,6 +310,7 @@ export function Desktop() {
   return (
     <div
       className="wtm-desktop"
+      style={wallpaperStyle(appearance)}
       onClick={() => {
         setLauncherOpen(false);
         setUserMenu(false);
@@ -589,7 +621,16 @@ export function Desktop() {
           className="wtm-start"
           onClick={() => setLauncherOpen((o) => !o)}
         >
-          <span className="wtm-start__dot">{appearance.logoText}</span>
+          {appearance.logoImage ? (
+            <img
+              className="wtm-start__logo"
+              src={appearance.logoImage}
+              alt="Inicio"
+              draggable={false}
+            />
+          ) : (
+            <span className="wtm-start__dot">{appearance.logoText}</span>
+          )}
           Inicio
         </button>
         <div className="wtm-taskbar__sep" />
@@ -611,26 +652,36 @@ export function Desktop() {
         )}
 
         <div className="wtm-taskbar__apps">
-          {wm.windows.map((w) => (
-            <button
-              key={w.id}
-              className={`wtm-taskbtn ${
-                !w.minimized ? "wtm-taskbtn--active" : ""
-              }`}
-              onClick={() =>
-                w.minimized ? wm.focus(w.id) : wm.minimize(w.id)
-              }
-              onContextMenu={(e) => {
-                // Clic derecho: traer la ventana al centro (rescate).
-                e.preventDefault();
-                wm.center(w.id);
-              }}
-              title={`${w.module.name} — clic derecho para traer al centro`}
-            >
-              <Icon name={w.module.icon} size={14} />
-              {w.module.name}
-            </button>
-          ))}
+          {wm.windows.map((w) => {
+            // z mas alto entre las ventanas VISIBLES = la que esta al frente.
+            const frontZ = Math.max(
+              0,
+              ...wm.windows.filter((o) => !o.minimized).map((o) => o.z),
+            );
+            const isFront = !w.minimized && w.z === frontZ;
+            return (
+              <button
+                key={w.id}
+                className={`wtm-taskbtn ${isFront ? "wtm-taskbtn--active" : ""}`}
+                onClick={() => {
+                  // Un solo clic, comportamiento tipo Windows:
+                  // - minimizada o detras de otra -> traer al frente
+                  // - ya al frente -> minimizar
+                  if (isFront) wm.minimize(w.id);
+                  else wm.focus(w.id);
+                }}
+                onContextMenu={(e) => {
+                  // Clic derecho: traer la ventana al centro (rescate).
+                  e.preventDefault();
+                  wm.center(w.id);
+                }}
+                title={`${w.module.name} — clic derecho para traer al centro`}
+              >
+                <Icon name={w.module.icon} size={14} />
+                {w.module.name}
+              </button>
+            );
+          })}
         </div>
 
         <div className="wtm-tray">

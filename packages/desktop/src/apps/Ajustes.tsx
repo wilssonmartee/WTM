@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type {
   AdminUser,
   Appearance,
@@ -83,6 +83,12 @@ export function Ajustes({ module }: { module: ModuleManifest }) {
 }
 
 // ================= Apariencia =================
+// Logo WTM por defecto (SVG embebido como data URL). Un orbe Aero con una "W"
+// trazada como linea de crecimiento + barras de datos y "TM" debajo: evoca un
+// sistema de gestion empresarial y deja presentes las letras W-T-M.
+const WTM_LOGO_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="240" height="240" viewBox="0 0 240 240"><defs><linearGradient id="orb" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#5bb3f0"/><stop offset="48%" stop-color="#2f86d6"/><stop offset="52%" stop-color="#1e6fc0"/><stop offset="100%" stop-color="#0f4e95"/></linearGradient><linearGradient id="bars" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#ffffff"/><stop offset="100%" stop-color="#dcebfb"/></linearGradient><radialGradient id="gloss" cx="50%" cy="30%" r="60%"><stop offset="0%" stop-color="#ffffff" stop-opacity="0.55"/><stop offset="60%" stop-color="#ffffff" stop-opacity="0"/></radialGradient></defs><circle cx="120" cy="120" r="112" fill="url(#orb)" stroke="#0c3f7a" stroke-width="3"/><circle cx="120" cy="120" r="112" fill="url(#gloss)"/><g stroke="url(#bars)" stroke-width="15" stroke-linecap="round" fill="none"><path d="M62 78 L84 165"/><path d="M84 165 L108 108"/><path d="M108 108 L132 165"/><path d="M132 165 L156 78"/></g><g fill="#bfe0ff"><rect x="70" y="150" width="12" height="20" rx="2"/><rect x="114" y="140" width="12" height="30" rx="2"/><rect x="158" y="128" width="12" height="42" rx="2"/></g><rect x="58" y="176" width="124" height="6" rx="3" fill="#bfe0ff" opacity="0.9"/><text x="120" y="205" text-anchor="middle" font-family="Segoe UI, Arial" font-size="20" font-weight="700" letter-spacing="3" fill="#eaf4ff">TM</text></svg>`;
+const WTM_DEFAULT_LOGO = `data:image/svg+xml;utf8,${encodeURIComponent(WTM_LOGO_SVG)}`;
+
 function AppearancePanel({ isAdmin }: { isAdmin: boolean }) {
   const { appearance, refreshAppearance } = useAuth();
   const [draft, setDraft] = useState<Appearance>(appearance);
@@ -197,6 +203,126 @@ function AppearancePanel({ isAdmin }: { isAdmin: boolean }) {
         </Field>
       </div>
 
+      <h3 style={h3}>Logo del boton de inicio</h3>
+      <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+        <div style={logoPreviewBox}>
+          {draft.logoImage ? (
+            <img
+              src={draft.logoImage}
+              alt="Logo"
+              style={{ width: 40, height: 40, objectFit: "contain" }}
+            />
+          ) : (
+            <span style={logoPreviewText}>{draft.logoText || "W"}</span>
+          )}
+        </div>
+        <div style={{ display: "grid", gap: 8 }}>
+          <ImagePicker
+            disabled={!isAdmin}
+            accept="image/png,image/jpeg,image/svg+xml,image/webp"
+            maxBytes={512 * 1024}
+            label={draft.logoImage ? "Cambiar logo..." : "Subir logo..."}
+            onPicked={(dataUrl) =>
+              setDraft((d) => ({ ...d, logoImage: dataUrl }))
+            }
+            onError={setMsg}
+          />
+          <div style={{ display: "flex", gap: 8 }}>
+            <Button
+              variant="default"
+              disabled={!isAdmin}
+              onClick={() =>
+                setDraft((d) => ({ ...d, logoImage: WTM_DEFAULT_LOGO }))
+              }
+            >
+              Usar logo WTM
+            </Button>
+            {draft.logoImage && (
+              <Button
+                variant="ghost"
+                disabled={!isAdmin}
+                onClick={() => setDraft((d) => ({ ...d, logoImage: "" }))}
+              >
+                Quitar (usar inicial)
+              </Button>
+            )}
+          </div>
+          <span style={{ fontSize: 11, color: "var(--wtm-text-dim)" }}>
+            PNG, JPG, SVG o WEBP. Maximo 512 KB. Ideal cuadrado.
+          </span>
+        </div>
+      </div>
+
+      <h3 style={h3}>Fondo de pantalla</h3>
+      <div style={{ display: "flex", alignItems: "flex-start", gap: 16 }}>
+        <div
+          style={{
+            ...wallPreviewBox,
+            backgroundImage: draft.wallpaper
+              ? `url("${draft.wallpaper}")`
+              : "radial-gradient(1400px 900px at 50% 120%, #9fc6ee 0%, #6b9bd3 35%, #3f6aa0 100%)",
+            backgroundSize:
+              draft.wallpaperFit === "tile"
+                ? "auto"
+                : draft.wallpaperFit === "contain"
+                  ? "contain"
+                  : draft.wallpaperFit === "center"
+                    ? "auto"
+                    : "cover",
+            backgroundRepeat:
+              draft.wallpaperFit === "tile" ? "repeat" : "no-repeat",
+            backgroundPosition: "center",
+          }}
+        />
+        <div style={{ display: "grid", gap: 8 }}>
+          <ImagePicker
+            disabled={!isAdmin}
+            accept="image/png,image/jpeg,image/webp"
+            maxBytes={4 * 1024 * 1024}
+            label={draft.wallpaper ? "Cambiar fondo..." : "Subir fondo..."}
+            onPicked={(dataUrl) =>
+              setDraft((d) => ({ ...d, wallpaper: dataUrl }))
+            }
+            onError={setMsg}
+          />
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <span style={{ fontSize: 12, color: "var(--wtm-text-dim)" }}>
+              Ajuste:
+            </span>
+            <select
+              className="ui-input"
+              disabled={!isAdmin || !draft.wallpaper}
+              value={draft.wallpaperFit}
+              onChange={(e) =>
+                setDraft((d) => ({
+                  ...d,
+                  wallpaperFit: e.target
+                    .value as Appearance["wallpaperFit"],
+                }))
+              }
+              style={{ padding: "4px 8px", width: 150 }}
+            >
+              <option value="cover">Rellenar (cover)</option>
+              <option value="contain">Ajustar (contain)</option>
+              <option value="center">Centrar</option>
+              <option value="tile">Mosaico</option>
+            </select>
+          </div>
+          {draft.wallpaper && (
+            <Button
+              variant="ghost"
+              disabled={!isAdmin}
+              onClick={() => setDraft((d) => ({ ...d, wallpaper: "" }))}
+            >
+              Quitar fondo
+            </Button>
+          )}
+          <span style={{ fontSize: 11, color: "var(--wtm-text-dim)" }}>
+            PNG, JPG o WEBP. Maximo 4 MB.
+          </span>
+        </div>
+      </div>
+
       {isAdmin && (
         <div style={{ marginTop: 16 }}>
           <Button variant="primary" onClick={save} disabled={saving}>
@@ -204,6 +330,57 @@ function AppearancePanel({ isAdmin }: { isAdmin: boolean }) {
           </Button>
         </div>
       )}
+    </>
+  );
+}
+
+/** Selector de imagen: lee un archivo local y lo entrega como data URL. */
+function ImagePicker({
+  disabled,
+  accept,
+  maxBytes,
+  label,
+  onPicked,
+  onError,
+}: {
+  disabled?: boolean;
+  accept: string;
+  maxBytes: number;
+  label: string;
+  onPicked: (dataUrl: string) => void;
+  onError: (msg: string) => void;
+}) {
+  const ref = useRef<HTMLInputElement>(null);
+  return (
+    <>
+      <input
+        ref={ref}
+        type="file"
+        accept={accept}
+        style={{ display: "none" }}
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          e.target.value = "";
+          if (!file) return;
+          if (file.size > maxBytes) {
+            onError(
+              `La imagen pesa ${(file.size / 1048576).toFixed(1)} MB; el maximo es ${(maxBytes / 1048576).toFixed(1)} MB.`,
+            );
+            return;
+          }
+          const reader = new FileReader();
+          reader.onload = () => onPicked(String(reader.result));
+          reader.onerror = () => onError("No se pudo leer la imagen.");
+          reader.readAsDataURL(file);
+        }}
+      />
+      <Button
+        variant="default"
+        disabled={disabled}
+        onClick={() => ref.current?.click()}
+      >
+        {label}
+      </Button>
     </>
   );
 }
@@ -777,3 +954,27 @@ const swatchCard: React.CSSProperties = {
   cursor: "pointer",
 };
 const sm: React.CSSProperties = { padding: "3px 10px" };
+
+const logoPreviewBox: React.CSSProperties = {
+  width: 64,
+  height: 64,
+  borderRadius: 12,
+  display: "grid",
+  placeItems: "center",
+  background: "linear-gradient(180deg, #2a3a52, #1b2636)",
+  border: "1px solid var(--wtm-border)",
+  flexShrink: 0,
+};
+const logoPreviewText: React.CSSProperties = {
+  fontSize: 26,
+  fontWeight: 800,
+  color: "#cfe6ff",
+};
+const wallPreviewBox: React.CSSProperties = {
+  width: 180,
+  height: 108,
+  borderRadius: 8,
+  border: "1px solid var(--wtm-border)",
+  flexShrink: 0,
+  boxShadow: "inset 0 0 0 1px rgba(255,255,255,0.25)",
+};

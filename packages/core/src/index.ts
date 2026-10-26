@@ -45,7 +45,9 @@ updater.startScheduler();
 
 const app = express();
 app.use(cors());
-app.use(express.json());
+// Limite amplio: la apariencia puede incluir un fondo de pantalla como data
+// URL (hasta ~4 MB). Los modulos que suben binario usan su propio parser raw.
+app.use(express.json({ limit: "12mb" }));
 
 // --- Salud / info publica ---
 app.get("/api/health", (_req, res) => {

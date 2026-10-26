@@ -200,8 +200,20 @@ export interface Appearance {
   systemName: string;
   /** Texto corto bajo el nombre (eslogan). */
   tagline: string;
-  /** Iniciales o texto del logo. */
+  /** Iniciales o texto del logo (se usa si no hay logoImage). */
   logoText: string;
+  /**
+   * Logo del boton de inicio como imagen (data URL o ruta). Si esta presente,
+   * se muestra en vez de logoText. Vacio = usar logoText.
+   */
+  logoImage: string;
+  /**
+   * Fondo de pantalla del escritorio (data URL o ruta de imagen). Vacio = usar
+   * el degradado de color por defecto.
+   */
+  wallpaper: string;
+  /** Ajuste del fondo: como se encaja la imagen. */
+  wallpaperFit: "cover" | "contain" | "tile" | "center";
   /** Tema base. */
   mode: "dark" | "light";
   colors: {
@@ -226,6 +238,9 @@ export const DEFAULT_APPEARANCE: Appearance = {
   systemName: "WTM",
   tagline: "Sistema de gestion empresarial",
   logoText: "W",
+  logoImage: "",
+  wallpaper: "",
+  wallpaperFit: "cover",
   // Estetica inspirada en Windows 7 (Aero): tema claro con cristal azul.
   mode: "light",
   colors: {
