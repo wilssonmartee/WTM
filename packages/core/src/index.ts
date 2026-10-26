@@ -386,8 +386,28 @@ wss.on("connection", (socket, req) => {
     } catch {
       return;
     }
-    const result = runCommand(user, session, payload.command ?? "");
-    socket.send(JSON.stringify({ type: "result", ...result }));
+    // 'emit' permite que un comando largo (rebuild, restart, update) envie
+    // salida en vivo, linea a linea, antes de terminar.
+    const emit = (l: unknown) => {
+      try {
+        socket.send(JSON.stringify({ type: "line", line: l }));
+      } catch {
+        /* cliente desconectado */
+      }
+    };
+    runCommand(user, session, payload.command ?? "", emit)
+      .then((result) => {
+        socket.send(JSON.stringify({ type: "result", ...result }));
+      })
+      .catch((e) => {
+        socket.send(
+          JSON.stringify({
+            type: "result",
+            cwd: session.cwd,
+            lines: [{ kind: "stderr", text: String(e?.message ?? e) }],
+          }),
+        );
+      });
   });
 });
 

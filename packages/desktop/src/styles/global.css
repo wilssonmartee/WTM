@@ -57,7 +57,7 @@ textarea,
 .ui-table td,
 .wtm-table td,
 .wtm-term,
-.wtm-term__out,
+.wtm-term__scroll,
 .wtm-progress__log,
 .ui-selectable,
 .wtm-selectable {
@@ -1177,13 +1177,29 @@ button {
   font-family: var(--wtm-mono);
   font-size: 12.5px;
   line-height: 1.55;
+  cursor: text;
 }
-.wtm-term__out {
+/* Todo el contenido (historial + prompt de entrada) vive en un unico flujo
+   desplazable, como una shell real. */
+.wtm-term__scroll {
   flex: 1;
   overflow: auto;
   padding: 11px 13px;
   white-space: pre-wrap;
   word-break: break-word;
+}
+.wtm-term__entry {
+  /* cada comando y su salida */
+}
+.wtm-term__cmd {
+  color: #c8d2dc;
+}
+.wtm-term__prompt-label {
+  color: #67e0a3;
+  font-weight: 600;
+}
+.wtm-term__cmd-text {
+  color: #e6edf3;
 }
 .wtm-term__line--stderr {
   color: #f08984;
@@ -1191,24 +1207,36 @@ button {
 .wtm-term__line--info {
   color: #6aa9f5;
 }
-.wtm-term__prompt {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 13px;
-  border-top: 1px solid rgba(255, 255, 255, 0.08);
+.wtm-term__line--stdout {
+  color: #c8d2dc;
 }
-.wtm-term__prompt span {
-  color: #67e0a3;
+/* Linea del prompt de entrada, dentro del flujo. */
+.wtm-term__inputline {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
 }
 .wtm-term__input {
   flex: 1;
+  min-width: 60px;
   background: transparent;
   border: none;
   outline: none;
-  color: inherit;
+  color: #e6edf3;
   font-family: inherit;
   font-size: inherit;
+  caret-color: #67e0a3;
+  padding: 0;
+  margin-left: 6px;
+}
+.wtm-term__busy {
+  margin-left: 6px;
+  color: #d7b56a;
+}
+/* Cursor de bloque parpadeante (estetica de terminal). Se oculta cuando el
+   input real tiene su propio caret; lo dejamos como acento visual sutil. */
+.wtm-term__caret {
+  display: none;
 }
 
 /* --- Snap preview --- */
