@@ -1239,6 +1239,34 @@ button {
   display: none;
 }
 
+/* --- Boton flotante: salir de pantalla completa (cliente nativo) --- */
+.wtm-exitfs {
+  position: fixed;
+  top: 10px;
+  right: 12px;
+  z-index: 10000;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  border-radius: 8px;
+  cursor: pointer;
+  background: linear-gradient(180deg, rgba(40, 90, 150, 0.92), rgba(20, 60, 110, 0.92));
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
+  backdrop-filter: blur(6px);
+  transition: background 0.12s, transform 0.08s;
+}
+.wtm-exitfs:hover {
+  background: linear-gradient(180deg, rgba(55, 110, 175, 0.95), rgba(30, 75, 130, 0.95));
+}
+.wtm-exitfs:active {
+  transform: translateY(1px);
+}
+
 /* --- Snap preview --- */
 .wtm-snap-preview {
   position: absolute;

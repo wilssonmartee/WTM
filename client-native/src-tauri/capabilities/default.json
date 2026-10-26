@@ -6,6 +6,7 @@
   "permissions": [
     "core:default",
     "global-shortcut:default",
-    "dialog:default"
+    "dialog:default",
+    "window-state:default"
   ]
 }

@@ -23,6 +23,8 @@ const PATHS: Record<string, string> = {
   power: "M18.36 6.64a9 9 0 11-12.73 0M12 2v10",
   home: "M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z",
   refresh: "M23 4v6h-6M1 20v-6h6M20.49 9A9 9 0 005.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 013.51 15",
+  // Salir de pantalla completa: cuatro flechas apuntando hacia dentro.
+  minimize: "M8 3v4a1 1 0 01-1 1H3M21 8h-4a1 1 0 01-1-1V3M16 21v-4a1 1 0 011-1h4M3 16h4a1 1 0 011 1v4",
 };
 
 export function Icon({

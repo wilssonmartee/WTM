@@ -13,6 +13,12 @@ export interface NativeBridge {
   listDir(
     path: string,
   ): Promise<{ name: string; is_dir: boolean; size: number }[]>;
+  /** Alterna pantalla completa (equivale a F11). */
+  toggleFullscreen?(): Promise<void>;
+  /** Sale de pantalla completa si lo esta. */
+  exitFullscreen?(): Promise<void>;
+  /** Devuelve si la ventana esta en pantalla completa. */
+  isFullscreen?(): Promise<boolean>;
 }
 
 export function native(): NativeBridge | null {

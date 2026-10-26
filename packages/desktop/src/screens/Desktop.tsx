@@ -14,6 +14,7 @@ import { Ajustes } from "../apps/Ajustes";
 import { Articulos } from "../apps/articulos/Articulos";
 import { wsUrl, getServerUrl } from "../lib/config";
 import { getToken } from "../lib/api";
+import { native } from "../lib/native";
 import type { SnapZone } from "../state/windows";
 import { snapGeom } from "../state/windows";
 
@@ -81,11 +82,44 @@ export function Desktop() {
   const [clock, setClock] = useState(new Date());
   const [busy, setBusy] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+  const [isFullscreen, setIsFullscreen] = useState(false);
   const taskbarH = appearance.taskbarHeight;
   const wm = useWindows(user?.id ?? null, modules, taskbarH);
 
   useEffect(() => {
     api.modules().then(setModules).catch(() => {});
+  }, []);
+
+  // --- Cliente nativo: control de pantalla completa ---
+  // La ventana arranca en modo ventana (con barra de titulo). F11 alterna
+  // pantalla completa; Escape sale de ella (solo si esta activa, para no
+  // interferir con el Escape normal de la UI). Mostramos un boton flotante
+  // para salir cuando se esta en pantalla completa.
+  useEffect(() => {
+    const n = native();
+    if (!n?.isFullscreen) return;
+    let alive = true;
+    const sync = () => n.isFullscreen?.().then((v) => alive && setIsFullscreen(!!v));
+    sync();
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "F11") {
+        e.preventDefault();
+        n.toggleFullscreen?.().then(() => setTimeout(sync, 120));
+      } else if (e.key === "Escape") {
+        // Solo actuamos si estamos en pantalla completa; si no, dejamos que
+        // Escape siga su curso normal en la UI (cerrar menus, etc.).
+        n.isFullscreen?.().then((v) => {
+          if (v) {
+            n.exitFullscreen?.().then(() => setTimeout(sync, 120));
+          }
+        });
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => {
+      alive = false;
+      window.removeEventListener("keydown", onKey);
+    };
   }, []);
 
   async function installModule(id: string) {
@@ -318,6 +352,23 @@ export function Desktop() {
         setSelectedIcon(null);
       }}
     >
+      {/* Boton flotante para salir de pantalla completa (solo cliente nativo) */}
+      {isFullscreen && (
+        <button
+          className="wtm-exitfs"
+          title="Salir de pantalla completa (Esc)"
+          onClick={(e) => {
+            e.stopPropagation();
+            native()
+              ?.exitFullscreen?.()
+              .then(() => setIsFullscreen(false));
+          }}
+        >
+          <Icon name="minimize" size={14} />
+          Salir de pantalla completa
+        </button>
+      )}
+
       {/* Iconos del escritorio */}
       <div className="wtm-deskicons" onClick={(e) => e.stopPropagation()}>
         {deskIcons.map((m) => (
