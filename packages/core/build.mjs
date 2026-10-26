@@ -19,6 +19,14 @@ const external = Object.keys(pkg.dependencies ?? {}).filter(
   (d) => d !== "@wtm/shared",
 );
 
+// Dependencias de MODULOS instaladas dinamicamente (ref-counting). No estan en
+// package.json al compilar, pero los modulos las importan con import() en
+// runtime. Las marcamos external para que esbuild no intente resolverlas aqui.
+const MODULE_DEPS_EXTERNAL = ["@marsaud/smb2"];
+for (const d of MODULE_DEPS_EXTERNAL) {
+  if (!external.includes(d)) external.push(d);
+}
+
 await build({
   entryPoints: ["src/index.ts"],
   bundle: true,

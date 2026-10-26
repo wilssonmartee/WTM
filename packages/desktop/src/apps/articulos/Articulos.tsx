@@ -17,14 +17,7 @@ import { Icon } from "../../components/Icon";
 import { ENCODINGS, normalizeText, type DbfTable } from "./dbf";
 import type { WorkerResponse } from "./dbf.worker";
 import { DataGrid } from "./DataGrid";
-import {
-  clearFileBytes,
-  gunzip,
-  gzip,
-  loadFileBytes,
-  saveFileBytes,
-} from "./fileStore";
-import { native } from "../../lib/native";
+import { gunzip } from "./fileStore";
 
 interface ColumnConfig {
   name: string;
@@ -37,11 +30,28 @@ interface SavedConfig {
   sortBy: string | null;
   sortDir: "asc" | "desc";
   encoding: string;
-  fileLabel: string; // nombre del archivo (informativo)
-  filePath?: string; // ruta real (solo cliente nativo): permite releer sin pedir
+}
+
+/** Conexion SMB tal como la devuelve el core (sin contrasena en claro). */
+interface SmbConfig {
+  host: string;
+  share: string;
+  username: string;
+  domain: string;
+  dbfPath: string;
+  hasPassword: boolean;
 }
 
 type View = "datos" | "config";
+
+const EMPTY_SMB: SmbConfig = {
+  host: "",
+  share: "",
+  username: "",
+  domain: "",
+  dbfPath: "",
+  hasPassword: false,
+};
 
 export function Articulos({ module }: { module: ModuleManifest }) {
   const { levelFor } = useAuth();
@@ -51,7 +61,6 @@ export function Articulos({ module }: { module: ModuleManifest }) {
   const [table, setTable] = useState<DbfTable | null>(null);
   const [searchIndex, setSearchIndex] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
-  const [uploadPct, setUploadPct] = useState<number | null>(null);
   const [statusMsg, setStatusMsg] = useState("");
   const [error, setError] = useState("");
   const [encoding, setEncoding] = useState("auto");
@@ -59,16 +68,21 @@ export function Articulos({ module }: { module: ModuleManifest }) {
   const [sortBy, setSortBy] = useState<string | null>(null);
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [query, setQuery] = useState("");
-  const [fileLabel, setFileLabel] = useState("");
-  const [remembered, setRemembered] = useState(false);
   const [savedMsg, setSavedMsg] = useState("");
-  const filePathRef = useRef<string | null>(null);
-  const nativeAvailable = !!native();
   const [selected, setSelected] = useState<Set<number>>(new Set());
+
+  // Conexion SMB.
+  const [smb, setSmb] = useState<SmbConfig>(EMPTY_SMB);
+  const [smbPassword, setSmbPassword] = useState(""); // solo en memoria al editar
+  const [smbTesting, setSmbTesting] = useState(false);
+  const [smbTestMsg, setSmbTestMsg] = useState<{
+    ok: boolean;
+    text: string;
+  } | null>(null);
+  const [smbConfigured, setSmbConfigured] = useState(false);
 
   const savedConfigRef = useRef<SavedConfig | null>(null);
   const workerRef = useRef<Worker | null>(null);
-  const fallbackRef = useRef<HTMLInputElement>(null);
 
   // Worker de parseo.
   useEffect(() => {
@@ -130,10 +144,9 @@ export function Articulos({ module }: { module: ModuleManifest }) {
     [buildColumns],
   );
 
-  // --- Al abrir el modulo: cargar config + el DBF guardado en el core ---
+  // --- Al abrir: cargar config + conexion SMB + la copia cacheada en el core.
   useEffect(() => {
     (async () => {
-      // Config guardada en el core (columnas/alias/orden/encoding/etiqueta).
       const cfg = await api
         .moduleCall<SavedConfig | null>("articulos", "/config")
         .catch(() => null);
@@ -142,41 +155,19 @@ export function Articulos({ module }: { module: ModuleManifest }) {
         if (cfg.encoding) setEncoding(cfg.encoding);
         if (cfg.sortBy) setSortBy(cfg.sortBy);
         if (cfg.sortDir) setSortDir(cfg.sortDir);
-        if (cfg.fileLabel) setFileLabel(cfg.fileLabel);
-        if (cfg.filePath) filePathRef.current = cfg.filePath;
       }
 
+      const smbCfg = await api
+        .moduleCall<SmbConfig | null>("articulos", "/smb/config")
+        .catch(() => null);
+      if (smbCfg) {
+        setSmb(smbCfg);
+        setSmbConfigured(!!(smbCfg.host && smbCfg.share && smbCfg.dbfPath));
+      }
+
+      // Mostrar de inmediato la ultima copia leida (cache gzip en el core).
       setLoading(true);
       try {
-        const n = native();
-        // 0) Cliente nativo con ruta guardada -> releer del disco directo.
-        if (n && cfg?.filePath) {
-          try {
-            const bytes = await n.readFile(cfg.filePath);
-            setRemembered(true);
-            await parseBuffer(
-              bytes.buffer.slice(
-                bytes.byteOffset,
-                bytes.byteOffset + bytes.byteLength,
-              ) as ArrayBuffer,
-              cfg.encoding ?? "auto",
-            );
-            setStatusMsg("Datos leidos del archivo local.");
-            return;
-          } catch {
-            /* la ruta ya no existe; seguimos con las otras fuentes */
-          }
-        }
-        // 1) Copia local recordada (bytes en IndexedDB) -> carga instantanea.
-        const local = await loadFileBytes();
-        if (local) {
-          setRemembered(true);
-          if (!cfg?.fileLabel) setFileLabel(local.name);
-          await parseBuffer(local.bytes.slice(0), cfg?.encoding ?? "auto");
-          setStatusMsg("Datos cargados (copia local recordada).");
-          return;
-        }
-        // 2) Si no, el DBF guardado en el core.
         const bytes = await api.moduleDownload("articulos", "/data");
         if (bytes) {
           const plain = await gunzip(bytes);
@@ -185,10 +176,10 @@ export function Articulos({ module }: { module: ModuleManifest }) {
             plain.byteOffset + plain.byteLength,
           ) as ArrayBuffer;
           await parseBuffer(ab, cfg?.encoding ?? "auto");
-          setStatusMsg("Datos cargados desde el servidor.");
+          setStatusMsg("Datos de la ultima lectura. Pulsa Actualizar para releer del servidor SMB.");
         }
       } catch {
-        /* sin datos aun */
+        /* sin cache aun */
       } finally {
         setLoading(false);
       }
@@ -240,102 +231,39 @@ export function Articulos({ module }: { module: ModuleManifest }) {
     }
   }
 
-  // Elegir archivo (Configuracion). En nativo: dialogo del sistema -> guarda
-  // la RUTA. En web: input clasico -> guarda el CONTENIDO en IndexedDB.
-  async function pickFile() {
-    setError("");
-    const n = native();
-    if (n) {
-      const path = await n.pickFile();
-      if (!path) return;
-      filePathRef.current = path;
-      const label = path.split(/[\\/]/).pop() || path;
-      setFileLabel(label);
-      setRemembered(true);
-      await persistConfig({ fileLabel: label, filePath: path });
-      const bytes = await n.readFile(path);
-      await refreshWith(
-        bytes.buffer.slice(
-          bytes.byteOffset,
-          bytes.byteOffset + bytes.byteLength,
-        ) as ArrayBuffer,
-      );
-    } else {
-      fallbackRef.current?.click();
-    }
-  }
-
-  // Input clasico (solo web): guarda el contenido en IndexedDB.
-  async function onFilePicked(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    e.target.value = "";
-    if (!file) return;
-    const buf = await file.arrayBuffer();
-    setFileLabel(file.name);
-    await saveFileBytes(file.name, buf.slice(0));
-    setRemembered(true);
-    await persistConfig({ fileLabel: file.name });
-    await refreshWith(buf);
-  }
-
-  // "Actualizar": en nativo con ruta guardada, relee del disco SIN pedir nada.
-  // En web, pide el archivo (el navegador no puede releer solo).
+  // "Actualizar": el CORE lee el DBF desde el servidor SMB y nos devuelve los
+  // bytes (gzip) para parsear en el navegador.
   async function refresh() {
     setError("");
     setStatusMsg("");
-    const n = native();
-    if (n && filePathRef.current) {
-      try {
-        setLoading(true);
-        const bytes = await n.readFile(filePathRef.current);
-        await refreshWith(
-          bytes.buffer.slice(
-            bytes.byteOffset,
-            bytes.byteOffset + bytes.byteLength,
-          ) as ArrayBuffer,
-        );
-      } catch {
-        setLoading(false);
-        setError("No se pudo leer el archivo. Reconfiguralo en Configuracion.");
-      }
+    if (!smbConfigured) {
+      setView("config");
+      setError(
+        "Configura primero la conexion SMB y la ruta del DBF en Configuracion.",
+      );
       return;
     }
-    // Web (o sin ruta): pedir archivo.
-    pickFile();
-  }
-
-  async function refreshWith(buf: ArrayBuffer) {
     setLoading(true);
-    await parseBuffer(buf, encoding);
-    setLoading(false);
-    setView("datos");
-    uploadToCore(buf);
-  }
-
-  async function uploadToCore(buf: ArrayBuffer) {
-    if (!canConfig) return; // solo nivel 2+ persiste en el servidor
     try {
-      setUploadPct(0);
-      const compressed = await gzip(new Uint8Array(buf));
-      await api.moduleUpload("articulos", "/data", compressed, (f) =>
-        setUploadPct(Math.round(f * 100)),
-      );
-      setUploadPct(100);
-      setStatusMsg("Copia guardada en el servidor.");
-      setTimeout(() => setUploadPct(null), 1200);
+      const bytes = await api.moduleDownloadOrThrow("articulos", "/smb/read");
+      const plain = await gunzip(bytes);
+      const ab = plain.buffer.slice(
+        plain.byteOffset,
+        plain.byteOffset + plain.byteLength,
+      ) as ArrayBuffer;
+      await parseBuffer(ab, encoding);
+      setView("datos");
+      setStatusMsg("Datos actualizados desde el servidor SMB.");
     } catch (e) {
-      setUploadPct(null);
-      setStatusMsg(
-        "No se pudo guardar en el servidor: " +
-          (e instanceof Error ? e.message : "error"),
-      );
+      setError(e instanceof Error ? e.message : "No se pudo leer el DBF");
+    } finally {
+      setLoading(false);
     }
   }
 
   function changeEncoding(enc: string) {
     setEncoding(enc);
-    // re-aplicar sobre los datos ya cargados no es trivial sin el buffer;
-    // el usuario puede pulsar Actualizar para releer con la nueva codificacion.
+    // El re-parseo con otra codificacion requiere releer: pulsar Actualizar.
   }
 
   async function persistConfig(extra: Partial<SavedConfig> = {}) {
@@ -345,8 +273,6 @@ export function Articulos({ module }: { module: ModuleManifest }) {
       sortBy,
       sortDir,
       encoding,
-      fileLabel,
-      filePath: filePathRef.current ?? undefined,
       ...extra,
     };
     savedConfigRef.current = cfg;
@@ -364,12 +290,62 @@ export function Articulos({ module }: { module: ModuleManifest }) {
     setTimeout(() => setSavedMsg(""), 2500);
   }
 
-  async function forgetFile() {
-    await clearFileBytes();
-    filePathRef.current = null;
-    setRemembered(false);
-    setFileLabel("");
-    await persistConfig({ fileLabel: "", filePath: undefined });
+  // --- SMB: guardar / probar ---
+  async function saveSmb() {
+    setSmbTestMsg(null);
+    try {
+      const payload: Record<string, string> = {
+        host: smb.host,
+        share: smb.share,
+        username: smb.username,
+        domain: smb.domain,
+        dbfPath: smb.dbfPath,
+      };
+      // Solo mandamos contrasena si el usuario escribio una nueva.
+      if (smbPassword) payload.password = smbPassword;
+      const data = await api.moduleCall<SmbConfig>("articulos", "/smb/config", {
+        method: "PUT",
+        body: JSON.stringify(payload),
+      });
+      setSmb(data);
+      setSmbPassword("");
+      setSmbConfigured(!!(data.host && data.share && data.dbfPath));
+      setSavedMsg("Conexion SMB guardada.");
+      setTimeout(() => setSavedMsg(""), 2500);
+    } catch (e) {
+      setSmbTestMsg({
+        ok: false,
+        text: e instanceof Error ? e.message : "Error al guardar",
+      });
+    }
+  }
+
+  async function testSmb() {
+    setSmbTesting(true);
+    setSmbTestMsg(null);
+    try {
+      const payload: Record<string, string> = {
+        host: smb.host,
+        share: smb.share,
+        username: smb.username,
+        domain: smb.domain,
+        dbfPath: smb.dbfPath,
+      };
+      if (smbPassword) payload.password = smbPassword;
+      const r = await api.moduleCall<{ ok: boolean; detail: string }>(
+        "articulos",
+        "/smb/test",
+        { method: "POST", body: JSON.stringify(payload) },
+      );
+      setSmbTestMsg({ ok: r.ok, text: r.detail });
+    } catch (e) {
+      setSmbTestMsg({
+        ok: false,
+        text: e instanceof Error ? e.message : "Error al probar",
+      });
+    } finally {
+      setSmbTesting(false);
+    }
   }
 
   return (
@@ -378,7 +354,7 @@ export function Articulos({ module }: { module: ModuleManifest }) {
         icon={<Icon name={module.icon} size={20} />}
         color={module.color}
         title="Articulos"
-        subtitle="Lee un DBF local: columnas, orden y busqueda"
+        subtitle="Lee un DBF desde un servidor SMB: columnas, orden y busqueda"
       />
 
       <Toolbar>
@@ -402,43 +378,23 @@ export function Articulos({ module }: { module: ModuleManifest }) {
         )}
       </Toolbar>
 
-      {/* Barra de progreso de subida al servidor */}
-      {uploadPct !== null && (
-        <div className="ui-upload">
-          <div className="ui-upload__label">
-            Subiendo al servidor... {uploadPct}%
-          </div>
-          <div className="ui-upload__bar">
-            <div
-              className="ui-upload__fill"
-              style={{ width: `${uploadPct}%` }}
-            />
-          </div>
-        </div>
-      )}
-
       <ModuleBody>
         {error && <Notice tone="error">{error}</Notice>}
         {savedMsg && <Notice tone="success">{savedMsg}</Notice>}
 
-        <input
-          ref={fallbackRef}
-          type="file"
-          accept=".dbf,.DBF"
-          style={{ display: "none" }}
-          onChange={onFilePicked}
-        />
-
         {view === "config" ? (
           <ConfigView
             canConfig={canConfig}
-            nativeAvailable={nativeAvailable}
-            fileLabel={fileLabel}
-            remembered={remembered}
+            smb={smb}
+            setSmb={setSmb}
+            smbPassword={smbPassword}
+            setSmbPassword={setSmbPassword}
+            onSaveSmb={saveSmb}
+            onTestSmb={testSmb}
+            smbTesting={smbTesting}
+            smbTestMsg={smbTestMsg}
             encoding={encoding}
             onEncoding={changeEncoding}
-            onPick={pickFile}
-            onForget={forgetFile}
             columns={columns}
             setColumns={setColumns}
             onSave={saveConfigNow}
@@ -449,8 +405,8 @@ export function Articulos({ module }: { module: ModuleManifest }) {
             {statusMsg && !loading && <Notice>{statusMsg}</Notice>}
             {!table && !loading && (
               <Notice>
-                No hay datos. Ve a <b>Configuracion</b>, elige tu archivo DBF y
-                pulsa <b>Actualizar</b>.
+                No hay datos. Ve a <b>Configuracion</b>, define la conexion SMB y
+                la ruta del DBF, luego pulsa <b>Actualizar</b>.
               </Notice>
             )}
             {table && (
@@ -466,7 +422,7 @@ export function Articulos({ module }: { module: ModuleManifest }) {
                     style={{ maxWidth: 360 }}
                   />
                   <span style={{ fontSize: 12, color: "var(--wtm-text-dim)" }}>
-                    {fileLabel || "DBF"} ·{" "}
+                    {smb.dbfPath || "DBF"} ·{" "}
                     {rows.length.toLocaleString()} de{" "}
                     {table.recordCount.toLocaleString()} registros
                     {selected.size > 0
@@ -498,72 +454,120 @@ export function Articulos({ module }: { module: ModuleManifest }) {
 // ================= Vista de configuracion =================
 function ConfigView({
   canConfig,
-  nativeAvailable,
-  fileLabel,
-  remembered,
+  smb,
+  setSmb,
+  smbPassword,
+  setSmbPassword,
+  onSaveSmb,
+  onTestSmb,
+  smbTesting,
+  smbTestMsg,
   encoding,
   onEncoding,
-  onPick,
-  onForget,
   columns,
   setColumns,
   onSave,
 }: {
   canConfig: boolean;
-  nativeAvailable: boolean;
-  fileLabel: string;
-  remembered: boolean;
+  smb: SmbConfig;
+  setSmb: (s: SmbConfig) => void;
+  smbPassword: string;
+  setSmbPassword: (p: string) => void;
+  onSaveSmb: () => void;
+  onTestSmb: () => void;
+  smbTesting: boolean;
+  smbTestMsg: { ok: boolean; text: string } | null;
   encoding: string;
   onEncoding: (e: string) => void;
-  onPick: () => void;
-  onForget: () => void;
   columns: ColumnConfig[];
   setColumns: (c: ColumnConfig[]) => void;
   onSave: () => void;
 }) {
+  function set<K extends keyof SmbConfig>(key: K, value: SmbConfig[K]) {
+    setSmb({ ...smb, [key]: value });
+  }
   return (
-    <div style={{ maxWidth: 620 }}>
+    <div style={{ maxWidth: 640 }}>
       {!canConfig && (
         <Notice>Necesitas nivel 2+ para configurar este modulo.</Notice>
       )}
 
-      <h3 style={h3}>Archivo DBF</h3>
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 10,
-          flexWrap: "wrap",
-        }}
-      >
-        <Button variant="primary" onClick={onPick} disabled={!canConfig}>
-          {fileLabel ? "Cambiar archivo..." : "Elegir archivo DBF..."}
-        </Button>
-        <span style={{ fontSize: 13 }}>
-          {fileLabel ? (
-            <>
-              <b>{fileLabel}</b>{" "}
-              {remembered && (
-                <span style={{ color: "#2f7d4f" }}>· recordado</span>
-              )}
-            </>
-          ) : (
-            <span style={{ color: "var(--wtm-text-dim)" }}>
-              Ningun archivo configurado
-            </span>
-          )}
-        </span>
-        {fileLabel && (
-          <Button variant="ghost" onClick={onForget} disabled={!canConfig}>
-            Olvidar
-          </Button>
-        )}
-      </div>
+      <h3 style={h3}>Conexion al servidor SMB (Samba)</h3>
       <Notice>
-        {nativeAvailable
-          ? "Se recuerda la RUTA del archivo. Al abrir se lee del disco automaticamente, y Actualizar lo relee sin pedir seleccion."
-          : "En el navegador se recuerda el CONTENIDO (carga solo al abrir), pero Actualizar pedira el archivo porque el navegador no puede releer el disco. Usa el cliente de escritorio para relectura automatica."}
+        El nucleo se conecta a tu servidor Samba y lee el DBF directamente. No
+        hace falta tener el archivo en el equipo del cliente.
       </Notice>
+
+      <div style={grid2}>
+        <Field label="Host / IP">
+          <Input
+            placeholder="192.168.1.10"
+            value={smb.host}
+            onChange={(e) => set("host", e.target.value)}
+            disabled={!canConfig}
+          />
+        </Field>
+        <Field label="Recurso compartido">
+          <Input
+            placeholder="datos"
+            value={smb.share}
+            onChange={(e) => set("share", e.target.value)}
+            disabled={!canConfig}
+          />
+        </Field>
+        <Field label="Usuario">
+          <Input
+            placeholder="usuario"
+            value={smb.username}
+            onChange={(e) => set("username", e.target.value)}
+            disabled={!canConfig}
+          />
+        </Field>
+        <Field label="Contrasena">
+          <Input
+            type="password"
+            placeholder={smb.hasPassword ? "•••••• (guardada)" : "contrasena"}
+            value={smbPassword}
+            onChange={(e) => setSmbPassword(e.target.value)}
+            disabled={!canConfig}
+          />
+        </Field>
+        <Field label="Dominio (opcional)">
+          <Input
+            placeholder="WORKGROUP"
+            value={smb.domain}
+            onChange={(e) => set("domain", e.target.value)}
+            disabled={!canConfig}
+          />
+        </Field>
+        <Field label="Ruta del DBF dentro del recurso">
+          <Input
+            placeholder="carpeta\\articulos.dbf"
+            value={smb.dbfPath}
+            onChange={(e) => set("dbfPath", e.target.value)}
+            disabled={!canConfig}
+          />
+        </Field>
+      </div>
+
+      {smbTestMsg && (
+        <div style={{ marginTop: 10 }}>
+          <Notice tone={smbTestMsg.ok ? "success" : "error"}>
+            {smbTestMsg.text}
+          </Notice>
+        </div>
+      )}
+
+      {canConfig && (
+        <div style={{ display: "flex", gap: 10, marginTop: 14 }}>
+          <Button variant="primary" onClick={onSaveSmb}>
+            Guardar conexion
+          </Button>
+          <Button variant="default" onClick={onTestSmb} disabled={smbTesting}>
+            {smbTesting ? "Probando..." : "Probar conexion"}
+          </Button>
+        </div>
+      )}
 
       <h3 style={h3}>Codificacion</h3>
       <Select
@@ -593,6 +597,21 @@ function ConfigView({
   );
 }
 
+function Field({
+  label,
+  children,
+}: {
+  label: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <label style={{ display: "grid", gap: 4 }}>
+      <span style={{ fontSize: 12, color: "var(--wtm-text-dim)" }}>{label}</span>
+      {children}
+    </label>
+  );
+}
+
 /** Editor de columnas: visibilidad, alias y orden (subir/bajar). */
 function ColumnEditor({
   columns,
@@ -614,9 +633,7 @@ function ColumnEditor({
     setColumns([...arr]);
   }
   if (columns.length === 0) {
-    return (
-      <Notice>Abre un archivo para configurar sus columnas.</Notice>
-    );
+    return <Notice>Pulsa Actualizar para leer el DBF y configurar sus columnas.</Notice>;
   }
   return (
     <div style={{ display: "grid", gap: 6 }}>
@@ -676,4 +693,11 @@ const h3: React.CSSProperties = {
   letterSpacing: "0.06em",
   color: "var(--wtm-text-dim)",
   margin: "20px 0 10px",
+};
+
+const grid2: React.CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+  gap: 12,
+  marginTop: 12,
 };

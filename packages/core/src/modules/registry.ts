@@ -5,7 +5,11 @@ import { db } from "../db.js";
 import { inventarioModule } from "./inventario.js";
 import { articulosModule } from "./articulos.js";
 import { PLACEHOLDER_MODULES } from "./placeholders.js";
-import { addModuleDeps, removeModuleDeps } from "./deps.js";
+import {
+  addModuleDeps,
+  removeModuleDeps,
+  ensureModuleDeps,
+} from "./deps.js";
 
 /**
  * Registro de modulos del core.
@@ -31,6 +35,30 @@ export function initRegistry() {
     // desde el menu de inicio (Inventario aparece con el boton "Instalar").
     if (isInstalled(mod.manifest.id)) {
       mod.migrate(db);
+      // Reconciliar dependencias npm: si el modulo instalado gano nuevas
+      // npmDependencies (p.ej. tras actualizar), o node_modules no las tiene
+      // (deploy nuevo), instalarlas en segundo plano sin bloquear el arranque.
+      if (
+        mod.manifest.npmDependencies &&
+        Object.keys(mod.manifest.npmDependencies).length > 0
+      ) {
+        ensureModuleDeps(mod.manifest.id, mod.manifest.npmDependencies)
+          .then((r) => {
+            if (r.installed.length)
+              console.log(
+                `[modules] ${mod.manifest.id}: dependencias instaladas ${r.installed.join(", ")}`,
+              );
+            if (r.errors.length)
+              console.warn(
+                `[modules] ${mod.manifest.id}: fallo instalar deps: ${r.errors.join("; ")}`,
+              );
+          })
+          .catch((e) =>
+            console.warn(
+              `[modules] ${mod.manifest.id}: error reconciliando deps: ${e}`,
+            ),
+          );
+      }
     }
     routers.set(
       mod.manifest.id,

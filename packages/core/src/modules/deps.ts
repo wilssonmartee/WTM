@@ -24,8 +24,16 @@ export interface DepResult {
 }
 
 function runNpm(args: string[]): Promise<{ ok: boolean; detail: string }> {
+  // --no-save: las dependencias de MODULOS NO deben escribirse en el
+  // package.json raiz. Si lo hicieran, el core las veria como propias y el
+  // ref-counting nunca las desinstalaria al purgar. El estado real de "quien
+  // las usa" vive en la tabla module_deps; su presencia, en node_modules.
+  const full =
+    args[0] === "install" || args[0] === "uninstall"
+      ? [args[0], "--no-save", ...args.slice(1)]
+      : args;
   return new Promise((resolve) => {
-    const child = spawn("npm", args, {
+    const child = spawn("npm", full, {
       cwd: REPO_ROOT,
       env: process.env,
     });
@@ -111,6 +119,49 @@ export async function removeModuleDeps(
       const r = await runNpm(["uninstall", pkg]);
       if (r.ok) result.removed.push(pkg);
       else result.errors.push(`uninstall ${pkg}: ${r.detail}`);
+    }
+  }
+  return result;
+}
+
+/** Si el paquete esta fisicamente presente en node_modules. */
+function isPhysicallyInstalled(pkg: string): boolean {
+  try {
+    const fs = require("node:fs") as typeof import("node:fs");
+    const path = require("node:path") as typeof import("node:path");
+    // Soporta scoped (@scope/name) y normal.
+    const dir = path.join(REPO_ROOT, "node_modules", ...pkg.split("/"));
+    return fs.existsSync(path.join(dir, "package.json"));
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Reconcilia las dependencias de un modulo YA instalado: registra las refs que
+ * falten e instala los paquetes que no esten fisicamente presentes en
+ * node_modules. Util al arrancar el core cuando un modulo instalado gano nuevas
+ * npmDependencies en una actualizacion, o tras un deploy nuevo sin node_modules
+ * del modulo. Idempotente y silencioso ante errores (no bloquea el arranque).
+ */
+export async function ensureModuleDeps(
+  moduleId: string,
+  deps: Record<string, string>,
+): Promise<DepResult> {
+  const result: DepResult = { installed: [], removed: [], errors: [] };
+  const entries = Object.entries(deps ?? {});
+  if (entries.length === 0) return result;
+
+  const insRef = db.prepare(
+    "INSERT OR REPLACE INTO module_deps (module_id, package, version) VALUES (?, ?, ?)",
+  );
+
+  for (const [pkg, version] of entries) {
+    insRef.run(moduleId, pkg, version); // asegura la referencia
+    if (!isInRootPackageJson(pkg) && !isPhysicallyInstalled(pkg)) {
+      const r = await runNpm(["install", `${pkg}@${version}`]);
+      if (r.ok) result.installed.push(`${pkg}@${version}`);
+      else result.errors.push(`install ${pkg}: ${r.detail}`);
     }
   }
   return result;

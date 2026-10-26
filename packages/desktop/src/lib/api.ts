@@ -151,6 +151,35 @@ export const api = {
       method: "POST",
     });
   },
+  /**
+   * Descarga bytes con posibilidad de error legible (JSON). A diferencia de
+   * moduleDownload, aqui un fallo (p.ej. SMB caido) lanza con el mensaje del
+   * servidor en vez de solo el codigo.
+   */
+  async moduleDownloadOrThrow(
+    moduleId: string,
+    path: string,
+  ): Promise<Uint8Array> {
+    const token = getToken();
+    const res = await fetch(`${getServerUrl()}/api/m/${moduleId}${path}`, {
+      headers: {
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...(activeCompanyId ? { "X-WTM-Company": activeCompanyId } : {}),
+      },
+    });
+    if (!res.ok) {
+      let msg = `Error ${res.status}`;
+      try {
+        const j = await res.json();
+        if (j && j.error) msg = j.error;
+      } catch {
+        /* sin cuerpo JSON */
+      }
+      throw new Error(msg);
+    }
+    return new Uint8Array(await res.arrayBuffer());
+  },
+
   /** Llamada generica a la API de un modulo instalado: /api/m/<id>/<path>. */
   async moduleCall<T>(
     moduleId: string,
