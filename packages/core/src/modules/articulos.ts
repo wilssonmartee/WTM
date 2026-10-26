@@ -61,9 +61,12 @@ export const articulosModule: WtmModule = {
     dataScope: "shared",
     status: "available",
     category: "inventario",
-    // Cliente SMB puro en Node. El gestor de dependencias lo instala al
-    // instalar el modulo y lo quita al purgar si ningun otro modulo lo usa.
-    npmDependencies: { "@marsaud/smb2": "^0.18.0" },
+    // Cliente SMB para Node. Usamos @tryjsky/v9u-smb2 (fork de marsaud con
+    // parche para Node 17+/OpenSSL 3: @marsaud/smb2 falla con
+    // ERR_OSSL_EVP_UNSUPPORTED al generar el hash NTLM con DES). El gestor de
+    // dependencias lo instala al instalar el modulo y lo quita al purgar si
+    // ningun otro modulo lo usa.
+    npmDependencies: { "@tryjsky/v9u-smb2": "^1.1.0" },
   },
 
   migrate() {

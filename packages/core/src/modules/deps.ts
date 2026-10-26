@@ -156,6 +156,28 @@ export async function ensureModuleDeps(
     "INSERT OR REPLACE INTO module_deps (module_id, package, version) VALUES (?, ?, ?)",
   );
 
+  const declared = new Set(entries.map(([pkg]) => pkg));
+
+  // 1) Limpiar refs OBSOLETAS: paquetes que este modulo registraba antes pero
+  //    que ya no declara (p.ej. cambio de libreria en una actualizacion). Si
+  //    tras quitar la ref el paquete queda sin usar y no es del core, se
+  //    desinstala.
+  const existing = db
+    .prepare("SELECT package FROM module_deps WHERE module_id = ?")
+    .all(moduleId) as { package: string }[];
+  for (const { package: pkg } of existing) {
+    if (declared.has(pkg)) continue;
+    db.prepare(
+      "DELETE FROM module_deps WHERE module_id = ? AND package = ?",
+    ).run(moduleId, pkg);
+    if (refsFor(pkg).length === 0 && !isInRootPackageJson(pkg)) {
+      const r = await runNpm(["uninstall", pkg]);
+      if (r.ok) result.removed.push(pkg);
+      else result.errors.push(`uninstall ${pkg}: ${r.detail}`);
+    }
+  }
+
+  // 2) Registrar/instalar las dependencias declaradas que falten.
   for (const [pkg, version] of entries) {
     insRef.run(moduleId, pkg, version); // asegura la referencia
     if (!isInRootPackageJson(pkg) && !isPhysicallyInstalled(pkg)) {

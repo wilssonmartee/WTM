@@ -4,4 +4,4 @@
  * importan con import() en runtime. Declaramos el modulo como opaco para que
  * tsc no falle; el acceso real va casteado en smb.ts.
  */
-declare module "@marsaud/smb2";
+declare module "@tryjsky/v9u-smb2";

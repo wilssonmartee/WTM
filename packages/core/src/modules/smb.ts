@@ -23,8 +23,19 @@ export function normalizeSmbPath(p: string): string {
   return p.replace(/[/\\]+/g, "\\").replace(/^\\+/, "");
 }
 
+interface SmbReadStream {
+  on(ev: "data", cb: (chunk: Buffer) => void): void;
+  on(ev: "end", cb: () => void): void;
+  on(ev: "error", cb: (err: Error) => void): void;
+  destroy?(): void;
+}
+
 interface Smb2Like {
   readFile(path: string, cb: (err: Error | null, data: Buffer) => void): void;
+  createReadStream(
+    path: string,
+    cb: (err: Error | null, stream: SmbReadStream) => void,
+  ): void;
   readdir(
     path: string,
     cb: (err: Error | null, files: string[]) => void,
@@ -43,7 +54,7 @@ type Smb2Ctor = new (opts: {
 
 async function loadSmb2(): Promise<Smb2Ctor> {
   try {
-    const mod = (await import("@marsaud/smb2")) as unknown as {
+    const mod = (await import("@tryjsky/v9u-smb2")) as unknown as {
       default?: Smb2Ctor;
     } & Smb2Ctor;
     // La libreria exporta la clase como module.exports (default en ESM interop).
@@ -114,24 +125,90 @@ function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
 }
 
 const SMB_TIMEOUT_MS = 15000;
+// Leer un DBF grande por SMB puede tardar mas que una prueba de conexion.
+const SMB_READ_TIMEOUT_MS = 120000;
+const TCP_PROBE_MS = 5000;
+const SMB_PORT = 445;
+
+/**
+ * Comprobacion previa: abrir un socket TCP al puerto 445 del host. Permite dar
+ * un diagnostico claro (host inalcanzable / puerto cerrado) antes de intentar
+ * el handshake SMB, que de otro modo solo diria "tiempo de espera agotado".
+ */
+function tcpProbe(host: string): Promise<{ ok: boolean; detail: string }> {
+  return new Promise((resolve) => {
+    // import diferido: solo se usa aqui.
+    import("node:net")
+      .then(({ Socket }) => {
+        const socket = new Socket();
+        let done = false;
+        const finish = (ok: boolean, detail: string) => {
+          if (done) return;
+          done = true;
+          try {
+            socket.destroy();
+          } catch {
+            /* ignore */
+          }
+          resolve({ ok, detail });
+        };
+        socket.setTimeout(TCP_PROBE_MS);
+        socket.once("connect", () =>
+          finish(true, "Puerto 445 accesible."),
+        );
+        socket.once("timeout", () =>
+          finish(
+            false,
+            `No hay respuesta del host ${host} en el puerto ${SMB_PORT}. Revisa que el equipo este encendido, en la misma red y con SMB/compartir activado (firewall del puerto 445).`,
+          ),
+        );
+        socket.once("error", (e: NodeJS.ErrnoException) => {
+          const code = e.code ?? "";
+          let detail = e.message;
+          if (code === "ECONNREFUSED")
+            detail = `El host ${host} rechaza el puerto ${SMB_PORT}: SMB no esta escuchando ahi.`;
+          else if (code === "EHOSTUNREACH" || code === "ENETUNREACH")
+            detail = `No se alcanza el host ${host} (sin ruta de red).`;
+          else if (code === "ENOTFOUND")
+            detail = `No se resuelve el nombre ${host}.`;
+          finish(false, detail);
+        });
+        socket.connect(SMB_PORT, host);
+      })
+      .catch((e) => resolve({ ok: false, detail: (e as Error).message }));
+  });
+}
 
 /** Lee un archivo del share SMB y devuelve su contenido como Buffer. */
 export async function smbReadFile(
   conn: SmbConnection,
   filePath: string,
 ): Promise<Buffer> {
+  // Preflight TCP: diagnostico de red claro antes del handshake SMB.
+  const probe = await tcpProbe(conn.host);
+  if (!probe.ok) throw new Error(`Red: ${probe.detail}`);
+
   const Smb2 = await loadSmb2();
   const client = makeClient(conn, Smb2);
   const rel = normalizeSmbPath(filePath);
   try {
+    // Leemos por STREAM (bloques), no readFile de golpe: los DBF grandes hacen
+    // que el servidor responda STATUS_PENDING si se pide todo en una operacion.
+    // El stream lee en trozos y evita ese error, ademas de usar menos memoria.
     return await withTimeout(
       new Promise<Buffer>((resolve, reject) => {
-        client.readFile(rel, (err, data) => {
-          if (err) reject(err);
-          else resolve(data);
+        client.createReadStream(rel, (err, stream) => {
+          if (err) {
+            reject(new Error(smbErrorHint(err)));
+            return;
+          }
+          const chunks: Buffer[] = [];
+          stream.on("data", (chunk) => chunks.push(Buffer.from(chunk)));
+          stream.on("end", () => resolve(Buffer.concat(chunks)));
+          stream.on("error", (e) => reject(new Error(smbErrorHint(e))));
         });
       }),
-      SMB_TIMEOUT_MS,
+      SMB_READ_TIMEOUT_MS,
       "leer archivo",
     );
   } finally {
@@ -179,13 +256,43 @@ export async function smbTest(
   conn: SmbConnection,
   probePath?: string,
 ): Promise<{ ok: boolean; detail: string }> {
+  // FASE 1: comprobacion TCP del puerto 445. Separa "no llego al servidor" de
+  // "llego pero SMB/credenciales/ruta fallan".
+  const probe = await tcpProbe(conn.host);
+  if (!probe.ok) {
+    return { ok: false, detail: `Red: ${probe.detail}` };
+  }
+
+  // FASE 2: handshake SMB + autenticacion, listando la raiz del recurso.
+  let Smb2: Smb2Ctor;
   try {
-    const Smb2 = await loadSmb2();
-    const client = makeClient(conn, Smb2);
+    Smb2 = await loadSmb2();
+  } catch (e) {
+    return { ok: false, detail: (e as Error).message };
+  }
+  const client = makeClient(conn, Smb2);
+  try {
     try {
-      if (probePath && probePath.trim()) {
-        // Si hay ruta de archivo, comprobamos que exista.
-        const rel = normalizeSmbPath(probePath);
+      await withTimeout(
+        new Promise<string[]>((resolve, reject) => {
+          client.readdir("", (err, files) =>
+            err ? reject(err) : resolve(files),
+          );
+        }),
+        SMB_TIMEOUT_MS,
+        "abrir recurso",
+      );
+    } catch (e) {
+      return {
+        ok: false,
+        detail: `Puerto 445 abierto, pero no se pudo abrir el recurso "${conn.share}": ${smbErrorHint(e as Error)}`,
+      };
+    }
+
+    // FASE 3 (opcional): comprobar que el archivo exista dentro del recurso.
+    if (probePath && probePath.trim()) {
+      const rel = normalizeSmbPath(probePath);
+      try {
         const exists = await withTimeout(
           new Promise<boolean>((resolve, reject) => {
             client.exists(rel, (err, ex) => (err ? reject(err) : resolve(ex)));
@@ -197,28 +304,37 @@ export async function smbTest(
           ? { ok: true, detail: "Conexion correcta y archivo encontrado." }
           : {
               ok: false,
-              detail: "Conecta, pero no se encontro el archivo en esa ruta.",
+              detail: `Conecta al recurso, pero no existe el archivo en "${rel}". Revisa la ruta (relativa al recurso, sin repetir su nombre).`,
             };
-      }
-      // Sin ruta: listamos la raiz del share.
-      await withTimeout(
-        new Promise<string[]>((resolve, reject) => {
-          client.readdir("", (err, files) =>
-            err ? reject(err) : resolve(files),
-          );
-        }),
-        SMB_TIMEOUT_MS,
-        "listar recurso",
-      );
-      return { ok: true, detail: "Conexion correcta." };
-    } finally {
-      try {
-        client.disconnect();
-      } catch {
-        /* ignore */
+      } catch (e) {
+        return {
+          ok: false,
+          detail: `Conecta al recurso, pero fallo al comprobar el archivo: ${smbErrorHint(e as Error)}`,
+        };
       }
     }
-  } catch (e) {
-    return { ok: false, detail: (e as Error).message };
+    return { ok: true, detail: "Conexion y recurso correctos." };
+  } finally {
+    try {
+      client.disconnect();
+    } catch {
+      /* ignore */
+    }
   }
+}
+
+/** Traduce errores comunes de SMB a pistas en espanol. */
+function smbErrorHint(e: Error): string {
+  const msg = (e.message || "").toUpperCase();
+  if (msg.includes("STATUS_LOGON_FAILURE") || msg.includes("LOGON"))
+    return "credenciales incorrectas (usuario/contrasena/dominio).";
+  if (msg.includes("STATUS_BAD_NETWORK_NAME") || msg.includes("BAD_NETWORK"))
+    return `el recurso compartido no existe con ese nombre.`;
+  if (msg.includes("STATUS_ACCESS_DENIED") || msg.includes("ACCESS_DENIED"))
+    return "acceso denegado: el usuario no tiene permiso sobre el recurso.";
+  if (msg.includes("STATUS_OBJECT_NAME_NOT_FOUND") || msg.includes("NOT_FOUND"))
+    return "no se encontro la ruta dentro del recurso.";
+  if (msg.includes("STATUS_NOT_SUPPORTED") || msg.includes("NOT_SUPPORTED"))
+    return "el servidor rechazo el protocolo (puede requerir SMB1/NTLM no soportado).";
+  return e.message || "error desconocido";
 }
