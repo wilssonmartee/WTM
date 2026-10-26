@@ -23,6 +23,7 @@ import {
   uninstall,
   moduleDispatcher,
 } from "./modules/registry.js";
+import { setModuleEventBroadcaster } from "./modules/events.js";
 import * as updater from "./updater/service.js";
 import * as admin from "./admin.js";
 import { WTM_VERSION } from "@wtm/shared";
@@ -421,6 +422,9 @@ function broadcastSystem(payload: unknown) {
 updater.onReloadRequested((reason) => {
   broadcastSystem({ type: "system-reload", reason });
 });
+
+// Progreso de modulos (p.ej. Articulos leyendo un DBF por SMB) hacia la UI.
+setModuleEventBroadcaster((ev) => broadcastSystem(ev));
 
 // Progreso de actualizacion en vivo hacia los clientes.
 updater.onProgress((ev) => {

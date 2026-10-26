@@ -63,6 +63,12 @@ export function Articulos({ module }: { module: ModuleManifest }) {
   const [loading, setLoading] = useState(false);
   const [statusMsg, setStatusMsg] = useState("");
   const [error, setError] = useState("");
+  // Progreso de "Actualizar": fase legible + porcentaje (null = indeterminado).
+  const [progress, setProgress] = useState<{
+    phase: string;
+    percent: number | null;
+    detail: string;
+  } | null>(null);
   const [encoding, setEncoding] = useState("auto");
   const [columns, setColumns] = useState<ColumnConfig[]>([]);
   const [sortBy, setSortBy] = useState<string | null>(null);
@@ -91,6 +97,27 @@ export function Articulos({ module }: { module: ModuleManifest }) {
     });
     workerRef.current = worker;
     return () => worker.terminate();
+  }, []);
+
+  // Progreso de lectura SMB que emite el core por WebSocket (reenviado por el
+  // escritorio como CustomEvent). Solo nos interesa durante "Actualizar".
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const d = (e as CustomEvent).detail as {
+        moduleId: string;
+        phase: string;
+        percent: number | null;
+        detail?: string;
+      };
+      if (d.moduleId !== "articulos") return;
+      setProgress({
+        phase: d.phase,
+        percent: d.percent,
+        detail: d.detail ?? "",
+      });
+    };
+    window.addEventListener("wtm:module-progress", handler);
+    return () => window.removeEventListener("wtm:module-progress", handler);
   }, []);
 
   const buildColumns = useCallback(
@@ -244,13 +271,43 @@ export function Articulos({ module }: { module: ModuleManifest }) {
       return;
     }
     setLoading(true);
+    setProgress({
+      phase: "leyendo",
+      percent: 0,
+      detail: "Conectando al servidor...",
+    });
     try {
-      const bytes = await api.moduleDownloadOrThrow("articulos", "/smb/read");
+      // 1) El core lee del SMB (el progreso real llega por WebSocket) y nos
+      //    envia el gzip. La descarga en si es pequena (va comprimida).
+      const bytes = await api.moduleDownloadProgress(
+        "articulos",
+        "/smb/read",
+        (frac) => {
+          // Fase de transferencia al navegador (tras leer del SMB).
+          setProgress({
+            phase: "descargando",
+            percent: Math.round(frac * 100),
+            detail: "Recibiendo datos...",
+          });
+        },
+      );
+      // 2) Descomprimir.
+      setProgress({
+        phase: "descomprimiendo",
+        percent: null,
+        detail: "Descomprimiendo...",
+      });
       const plain = await gunzip(bytes);
       const ab = plain.buffer.slice(
         plain.byteOffset,
         plain.byteOffset + plain.byteLength,
       ) as ArrayBuffer;
+      // 3) Parsear en el worker.
+      setProgress({
+        phase: "procesando",
+        percent: null,
+        detail: "Procesando registros...",
+      });
       await parseBuffer(ab, encoding);
       setView("datos");
       setStatusMsg("Datos actualizados desde el servidor SMB.");
@@ -258,6 +315,7 @@ export function Articulos({ module }: { module: ModuleManifest }) {
       setError(e instanceof Error ? e.message : "No se pudo leer el DBF");
     } finally {
       setLoading(false);
+      setProgress(null);
     }
   }
 
@@ -377,6 +435,31 @@ export function Articulos({ module }: { module: ModuleManifest }) {
           </Button>
         )}
       </Toolbar>
+
+      {/* Barra de progreso de "Actualizar" (lectura SMB + descarga + parseo) */}
+      {progress && (
+        <div className="ui-upload">
+          <div className="ui-upload__label">
+            {progressLabel(progress.phase)}
+            {progress.percent !== null ? ` ${progress.percent}%` : ""}
+            {progress.detail ? ` — ${progress.detail}` : ""}
+          </div>
+          <div className="ui-upload__bar">
+            <div
+              className={
+                progress.percent === null
+                  ? "ui-upload__fill ui-upload__fill--indeterminate"
+                  : "ui-upload__fill"
+              }
+              style={
+                progress.percent === null
+                  ? undefined
+                  : { width: `${progress.percent}%` }
+              }
+            />
+          </div>
+        </div>
+      )}
 
       <ModuleBody>
         {error && <Notice tone="error">{error}</Notice>}
@@ -685,6 +768,25 @@ function ColumnEditor({
       ))}
     </div>
   );
+}
+
+/** Texto amigable para cada fase del proceso de actualizar. */
+function progressLabel(phase: string): string {
+  switch (phase) {
+    case "leyendo":
+      return "Leyendo del servidor SMB";
+    case "comprimiendo":
+      return "Comprimiendo en el servidor";
+    case "enviando":
+    case "descargando":
+      return "Descargando al navegador";
+    case "descomprimiendo":
+      return "Descomprimiendo";
+    case "procesando":
+      return "Procesando registros";
+    default:
+      return "Trabajando";
+  }
 }
 
 const h3: React.CSSProperties = {

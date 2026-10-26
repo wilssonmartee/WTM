@@ -180,6 +180,49 @@ export const api = {
     return new Uint8Array(await res.arrayBuffer());
   },
 
+  /**
+   * Descarga bytes de un modulo con PROGRESO de descarga (XHR). Util cuando el
+   * core puede tardar (p.ej. leer un DBF por SMB) y queremos una barra. Lanza
+   * con el mensaje del servidor si responde con error.
+   */
+  moduleDownloadProgress(
+    moduleId: string,
+    path: string,
+    onProgress?: (fraction: number) => void,
+  ): Promise<Uint8Array> {
+    return new Promise((resolve, reject) => {
+      const token = getToken();
+      const xhr = new XMLHttpRequest();
+      xhr.open("GET", `${getServerUrl()}/api/m/${moduleId}${path}`);
+      xhr.responseType = "arraybuffer";
+      if (token) xhr.setRequestHeader("Authorization", `Bearer ${token}`);
+      if (activeCompanyId) xhr.setRequestHeader("X-WTM-Company", activeCompanyId);
+      xhr.onprogress = (e) => {
+        if (e.lengthComputable && onProgress) onProgress(e.loaded / e.total);
+      };
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          resolve(new Uint8Array(xhr.response as ArrayBuffer));
+        } else {
+          // El cuerpo de error es JSON; lo decodificamos del ArrayBuffer.
+          let msg = `Error ${xhr.status}`;
+          try {
+            const text = new TextDecoder().decode(
+              new Uint8Array(xhr.response as ArrayBuffer),
+            );
+            const j = JSON.parse(text);
+            if (j && j.error) msg = j.error;
+          } catch {
+            /* sin cuerpo util */
+          }
+          reject(new Error(msg));
+        }
+      };
+      xhr.onerror = () => reject(new Error("Fallo de red al descargar"));
+      xhr.send();
+    });
+  },
+
   /** Llamada generica a la API de un modulo instalado: /api/m/<id>/<path>. */
   async moduleCall<T>(
     moduleId: string,

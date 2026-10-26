@@ -11,6 +11,7 @@ import {
   smbTest,
   type SmbConnection,
 } from "./smb.js";
+import { emitModuleEvent } from "./events.js";
 
 /**
  * Modulo Articulos.
@@ -242,16 +243,75 @@ export const articulosModule: WtmModule = {
         return;
       }
       try {
-        const raw = await smbReadFile(smbConnection(s), s.dbfPath);
-        const gz = zlib.gzipSync(raw);
-        // Actualizamos la cache en disco.
+        const t0 = Date.now();
+        emitModuleEvent({
+          type: "module-progress",
+          moduleId: "articulos",
+          phase: "leyendo",
+          percent: 0,
+          detail: "Conectando al servidor...",
+        });
+        // Throttle: no emitir en cada bloque de 64KB (serian cientos), sino
+        // como maximo ~cada 150ms, para no saturar el WebSocket.
+        let lastEmit = 0;
+        const raw = await smbReadFile(
+          smbConnection(s),
+          s.dbfPath,
+          (read, total) => {
+            const now = Date.now();
+            if (now - lastEmit < 150 && read < total) return;
+            lastEmit = now;
+            const pct = total > 0 ? Math.round((read / total) * 100) : null;
+            emitModuleEvent({
+              type: "module-progress",
+              moduleId: "articulos",
+              phase: "leyendo",
+              percent: pct,
+              detail:
+                total > 0
+                  ? `Leyendo del servidor: ${(read / 1048576).toFixed(1)} de ${(total / 1048576).toFixed(1)} MB`
+                  : `Leyendo del servidor: ${(read / 1048576).toFixed(1)} MB`,
+            });
+          },
+        );
+        const tRead = Date.now() - t0;
+
+        emitModuleEvent({
+          type: "module-progress",
+          moduleId: "articulos",
+          phase: "comprimiendo",
+          percent: null,
+          detail: "Comprimiendo para enviar...",
+        });
+        const t1 = Date.now();
+        // Nivel de compresion 6 (balance) en vez del maximo: el DBF comprime
+        // ~16x y el nivel alto solo anade tiempo de CPU sin ganancia util.
+        const gz = zlib.gzipSync(raw, { level: 6 });
+        const tGzip = Date.now() - t1;
+
+        emitModuleEvent({
+          type: "module-progress",
+          moduleId: "articulos",
+          phase: "enviando",
+          percent: 100,
+          detail: "Enviando al navegador...",
+        });
+
         try {
           fs.writeFileSync(storePath(), gz);
         } catch {
           /* la cache es best-effort */
         }
+        console.log(
+          `[articulos] SMB read ${(raw.length / 1048576).toFixed(1)}MB -> gzip ${(gz.length / 1048576).toFixed(2)}MB | leer=${tRead}ms comprimir=${tGzip}ms`,
+        );
         res.setHeader("Content-Type", "application/octet-stream");
         res.setHeader("Content-Encoding", "identity"); // gzip propio, no HTTP
+        // Exponemos metricas y el tamano original para la barra de progreso.
+        res.setHeader("X-WTM-Raw-Size", String(raw.length));
+        res.setHeader("X-WTM-Read-Ms", String(tRead));
+        res.setHeader("X-WTM-Gzip-Ms", String(tGzip));
+        res.setHeader("Access-Control-Expose-Headers", "Content-Length");
         res.send(gz);
       } catch (e) {
         res.status(502).json({

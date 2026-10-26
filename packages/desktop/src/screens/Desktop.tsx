@@ -181,6 +181,11 @@ export function Desktop() {
             window.dispatchEvent(
               new CustomEvent("wtm:update-progress", { detail: msg }),
             );
+          } else if (msg.type === "module-progress") {
+            // Progreso de un modulo (p.ej. Articulos leyendo un DBF por SMB).
+            window.dispatchEvent(
+              new CustomEvent("wtm:module-progress", { detail: msg }),
+            );
           }
         } catch {
           /* ignorar */

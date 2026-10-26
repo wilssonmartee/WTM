@@ -27,6 +27,8 @@ interface SmbReadStream {
   on(ev: "data", cb: (chunk: Buffer) => void): void;
   on(ev: "end", cb: () => void): void;
   on(ev: "error", cb: (err: Error) => void): void;
+  /** Tamano total del archivo en bytes (lo expone v9u-smb2 al abrir). */
+  fileSize?: number;
   destroy?(): void;
 }
 
@@ -179,10 +181,15 @@ function tcpProbe(host: string): Promise<{ ok: boolean; detail: string }> {
   });
 }
 
-/** Lee un archivo del share SMB y devuelve su contenido como Buffer. */
+/**
+ * Lee un archivo del share SMB y devuelve su contenido como Buffer.
+ * onProgress(leidos, total) se llama durante la lectura por bloques para que
+ * la UI pueda mostrar una barra de avance (total puede ser 0 si se desconoce).
+ */
 export async function smbReadFile(
   conn: SmbConnection,
   filePath: string,
+  onProgress?: (read: number, total: number) => void,
 ): Promise<Buffer> {
   // Preflight TCP: diagnostico de red claro antes del handshake SMB.
   const probe = await tcpProbe(conn.host);
@@ -202,8 +209,15 @@ export async function smbReadFile(
             reject(new Error(smbErrorHint(err)));
             return;
           }
+          const total = stream.fileSize ?? 0;
+          let read = 0;
           const chunks: Buffer[] = [];
-          stream.on("data", (chunk) => chunks.push(Buffer.from(chunk)));
+          stream.on("data", (chunk) => {
+            const b = Buffer.from(chunk);
+            chunks.push(b);
+            read += b.length;
+            if (onProgress) onProgress(read, total);
+          });
           stream.on("end", () => resolve(Buffer.concat(chunks)));
           stream.on("error", (e) => reject(new Error(smbErrorHint(e))));
         });
