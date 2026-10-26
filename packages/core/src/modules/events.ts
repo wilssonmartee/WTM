@@ -10,12 +10,16 @@
 export interface ModuleEvent {
   type: "module-progress";
   moduleId: string;
-  /** Fase legible: "leyendo", "comprimiendo", etc. */
+  /** Fase legible: "leyendo", "comprimiendo", "listo", "error". */
   phase: string;
   /** 0..100 o null si es indeterminado. */
   percent: number | null;
   /** Texto corto para la UI. */
   detail?: string;
+  /** true cuando la operacion termino bien (los datos ya estan en cache). */
+  done?: boolean;
+  /** Mensaje de error si la operacion fallo. */
+  error?: string;
 }
 
 let broadcaster: ((ev: ModuleEvent) => void) | null = null;

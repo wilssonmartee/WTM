@@ -100,7 +100,9 @@ export function Articulos({ module }: { module: ModuleManifest }) {
   }, []);
 
   // Progreso de lectura SMB que emite el core por WebSocket (reenviado por el
-  // escritorio como CustomEvent). Solo nos interesa durante "Actualizar".
+  // escritorio como CustomEvent). Al terminar (done) descargamos de la cache;
+  // si hay error, lo mostramos. Esto desacopla la larga lectura SMB de una
+  // peticion HTTP abierta, que en hosts lentos se cortaria.
   useEffect(() => {
     const handler = (e: Event) => {
       const d = (e as CustomEvent).detail as {
@@ -108,8 +110,22 @@ export function Articulos({ module }: { module: ModuleManifest }) {
         phase: string;
         percent: number | null;
         detail?: string;
+        done?: boolean;
+        error?: string;
       };
       if (d.moduleId !== "articulos") return;
+
+      if (d.error) {
+        setError(d.error);
+        setLoading(false);
+        setProgress(null);
+        return;
+      }
+      if (d.done) {
+        // La cache del core ya tiene el DBF nuevo: descargarlo y parsearlo.
+        void finishSyncFromCache();
+        return;
+      }
       setProgress({
         phase: d.phase,
         percent: d.percent,
@@ -118,7 +134,8 @@ export function Articulos({ module }: { module: ModuleManifest }) {
     };
     window.addEventListener("wtm:module-progress", handler);
     return () => window.removeEventListener("wtm:module-progress", handler);
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [encoding]);
 
   const buildColumns = useCallback(
     (fields: { name: string }[], saved: SavedConfig | null): ColumnConfig[] => {
@@ -260,6 +277,43 @@ export function Articulos({ module }: { module: ModuleManifest }) {
 
   // "Actualizar": el CORE lee el DBF desde el servidor SMB y nos devuelve los
   // bytes (gzip) para parsear en el navegador.
+  // Descarga la cache recien escrita por el core y la parsea. Se llama cuando
+  // el WebSocket avisa que la sincronizacion SMB termino (done).
+  const finishSyncFromCache = useCallback(async () => {
+    try {
+      setProgress({
+        phase: "descargando",
+        percent: null,
+        detail: "Descargando datos...",
+      });
+      const bytes = await api.moduleDownload("articulos", "/data");
+      if (!bytes) throw new Error("La cache del servidor esta vacia");
+      setProgress({
+        phase: "descomprimiendo",
+        percent: null,
+        detail: "Descomprimiendo...",
+      });
+      const plain = await gunzip(bytes);
+      const ab = plain.buffer.slice(
+        plain.byteOffset,
+        plain.byteOffset + plain.byteLength,
+      ) as ArrayBuffer;
+      setProgress({
+        phase: "procesando",
+        percent: null,
+        detail: "Procesando registros...",
+      });
+      await parseBuffer(ab, encoding);
+      setView("datos");
+      setStatusMsg("Datos actualizados desde el servidor SMB.");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "No se pudo cargar la copia");
+    } finally {
+      setLoading(false);
+      setProgress(null);
+    }
+  }, [encoding, parseBuffer]);
+
   async function refresh() {
     setError("");
     setStatusMsg("");
@@ -277,45 +331,15 @@ export function Articulos({ module }: { module: ModuleManifest }) {
       detail: "Conectando al servidor...",
     });
     try {
-      // 1) El core lee del SMB (el progreso real llega por WebSocket) y nos
-      //    envia el gzip. La descarga en si es pequena (va comprimida).
-      const bytes = await api.moduleDownloadProgress(
-        "articulos",
-        "/smb/read",
-        (frac) => {
-          // Fase de transferencia al navegador (tras leer del SMB).
-          setProgress({
-            phase: "descargando",
-            percent: Math.round(frac * 100),
-            detail: "Recibiendo datos...",
-          });
-        },
-      );
-      // 2) Descomprimir.
-      setProgress({
-        phase: "descomprimiendo",
-        percent: null,
-        detail: "Descomprimiendo...",
-      });
-      const plain = await gunzip(bytes);
-      const ab = plain.buffer.slice(
-        plain.byteOffset,
-        plain.byteOffset + plain.byteLength,
-      ) as ArrayBuffer;
-      // 3) Parsear en el worker.
-      setProgress({
-        phase: "procesando",
-        percent: null,
-        detail: "Procesando registros...",
-      });
-      await parseBuffer(ab, encoding);
-      setView("datos");
-      setStatusMsg("Datos actualizados desde el servidor SMB.");
+      // Dispara la lectura en el core (no bloquea). El progreso y el fin
+      // llegan por WebSocket (ver el useEffect de wtm:module-progress).
+      await api.moduleCall("articulos", "/smb/sync", { method: "POST" });
     } catch (e) {
-      setError(e instanceof Error ? e.message : "No se pudo leer el DBF");
-    } finally {
       setLoading(false);
       setProgress(null);
+      setError(
+        e instanceof Error ? e.message : "No se pudo iniciar la sincronizacion",
+      );
     }
   }
 

@@ -31,6 +31,14 @@ import { emitModuleEvent } from "./events.js";
 const CONFIG_KEY = "module.articulos.config";
 const SMB_KEY = "module.articulos.smb";
 
+// Evita lanzar dos sincronizaciones SMB a la vez (p.ej. doble clic en
+// Actualizar). Vive a nivel de modulo: persiste entre peticiones.
+let syncInProgress = false;
+let syncStartedAt = 0;
+// Red de seguridad: si una sync quedara colgada sin liberar el guard (caso
+// extremo), tras este tiempo se considera muerta y se permite reintentar.
+const SYNC_STUCK_MS = 10 * 60 * 1000; // 10 min
+
 function storeDir(): string {
   const dir = path.join(coreConfig.dataDir, "modules", "articulos");
   fs.mkdirSync(dir, { recursive: true });
@@ -225,10 +233,14 @@ export const articulosModule: WtmModule = {
       res.json({ ok: true, data: r });
     });
 
-    // ================= Leer el DBF desde SMB =================
-    // Lee el archivo del share, actualiza la cache gzip y devuelve los bytes
-    // gzip al cliente (que los parsea en el navegador, igual que antes).
-    router.get("/smb/read", async (_req, res) => {
+    // ================= Sincronizar el DBF desde SMB =================
+    // Dispara la lectura en SEGUNDO PLANO y responde de inmediato. El progreso
+    // viaja por WebSocket (module-progress) y, al terminar, un evento done:true
+    // indica que la cache ya tiene el DBF; el cliente lo descarga con /data.
+    //
+    // Esto evita mantener una peticion HTTP abierta durante toda la lectura
+    // (que en hosts lentos dura minutos y la cortarian proxies o el navegador).
+    router.post("/smb/sync", (_req, res) => {
       const s = loadSmb();
       if (!s || !s.host || !s.share) {
         res
@@ -242,83 +254,73 @@ export const articulosModule: WtmModule = {
           .json({ ok: false, error: "No se configuro la ruta del DBF" });
         return;
       }
-      try {
-        const t0 = Date.now();
-        emitModuleEvent({
-          type: "module-progress",
-          moduleId: "articulos",
-          phase: "leyendo",
-          percent: 0,
-          detail: "Conectando al servidor...",
-        });
-        // Throttle: no emitir en cada bloque de 64KB (serian cientos), sino
-        // como maximo ~cada 150ms, para no saturar el WebSocket.
-        let lastEmit = 0;
-        const raw = await smbReadFile(
-          smbConnection(s),
-          s.dbfPath,
-          (read, total) => {
-            const now = Date.now();
-            if (now - lastEmit < 150 && read < total) return;
-            lastEmit = now;
-            const pct = total > 0 ? Math.round((read / total) * 100) : null;
-            emitModuleEvent({
-              type: "module-progress",
-              moduleId: "articulos",
-              phase: "leyendo",
-              percent: pct,
-              detail:
+      if (syncInProgress && Date.now() - syncStartedAt < SYNC_STUCK_MS) {
+        res.json({ ok: true, data: { started: false, already: true } });
+        return;
+      }
+
+      syncInProgress = true;
+      syncStartedAt = Date.now();
+      res.json({ ok: true, data: { started: true } });
+
+      // --- Trabajo en segundo plano ---
+      void (async () => {
+        const emit = (
+          phase: string,
+          percent: number | null,
+          detail: string,
+          extra: { done?: boolean; error?: string } = {},
+        ) =>
+          emitModuleEvent({
+            type: "module-progress",
+            moduleId: "articulos",
+            phase,
+            percent,
+            detail,
+            ...extra,
+          });
+        try {
+          const t0 = Date.now();
+          emit("leyendo", 0, "Conectando al servidor...");
+          let lastEmit = 0;
+          const raw = await smbReadFile(
+            smbConnection(s),
+            s.dbfPath,
+            (read, total) => {
+              const now = Date.now();
+              if (now - lastEmit < 150 && read < total) return;
+              lastEmit = now;
+              const pct = total > 0 ? Math.round((read / total) * 100) : null;
+              emit(
+                "leyendo",
+                pct,
                 total > 0
                   ? `Leyendo del servidor: ${(read / 1048576).toFixed(1)} de ${(total / 1048576).toFixed(1)} MB`
                   : `Leyendo del servidor: ${(read / 1048576).toFixed(1)} MB`,
-            });
-          },
-        );
-        const tRead = Date.now() - t0;
+              );
+            },
+          );
+          const tRead = Date.now() - t0;
 
-        emitModuleEvent({
-          type: "module-progress",
-          moduleId: "articulos",
-          phase: "comprimiendo",
-          percent: null,
-          detail: "Comprimiendo para enviar...",
-        });
-        const t1 = Date.now();
-        // Nivel de compresion 6 (balance) en vez del maximo: el DBF comprime
-        // ~16x y el nivel alto solo anade tiempo de CPU sin ganancia util.
-        const gz = zlib.gzipSync(raw, { level: 6 });
-        const tGzip = Date.now() - t1;
+          emit("comprimiendo", null, "Comprimiendo...");
+          const t1 = Date.now();
+          const gz = zlib.gzipSync(raw, { level: 6 });
+          const tGzip = Date.now() - t1;
 
-        emitModuleEvent({
-          type: "module-progress",
-          moduleId: "articulos",
-          phase: "enviando",
-          percent: 100,
-          detail: "Enviando al navegador...",
-        });
-
-        try {
           fs.writeFileSync(storePath(), gz);
-        } catch {
-          /* la cache es best-effort */
+          console.log(
+            `[articulos] SMB sync ${(raw.length / 1048576).toFixed(1)}MB -> gzip ${(gz.length / 1048576).toFixed(2)}MB | leer=${tRead}ms comprimir=${tGzip}ms`,
+          );
+          emit("listo", 100, "Datos actualizados.", { done: true });
+        } catch (e) {
+          emit("error", null, "", {
+            error:
+              "No se pudo leer el DBF por SMB: " + (e as Error).message,
+          });
+        } finally {
+          syncInProgress = false;
         }
-        console.log(
-          `[articulos] SMB read ${(raw.length / 1048576).toFixed(1)}MB -> gzip ${(gz.length / 1048576).toFixed(2)}MB | leer=${tRead}ms comprimir=${tGzip}ms`,
-        );
-        res.setHeader("Content-Type", "application/octet-stream");
-        res.setHeader("Content-Encoding", "identity"); // gzip propio, no HTTP
-        // Exponemos metricas y el tamano original para la barra de progreso.
-        res.setHeader("X-WTM-Raw-Size", String(raw.length));
-        res.setHeader("X-WTM-Read-Ms", String(tRead));
-        res.setHeader("X-WTM-Gzip-Ms", String(tGzip));
-        res.setHeader("Access-Control-Expose-Headers", "Content-Length");
-        res.send(gz);
-      } catch (e) {
-        res.status(502).json({
-          ok: false,
-          error: "No se pudo leer el DBF por SMB: " + (e as Error).message,
-        });
-      }
+      })();
     });
 
     // ================= Cache gzip (compatibilidad) =================

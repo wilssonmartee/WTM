@@ -32,12 +32,21 @@ interface SmbReadStream {
   destroy?(): void;
 }
 
+interface StreamOpts {
+  start?: number;
+  end?: number; // inclusivo (como fs)
+}
+
 interface Smb2Like {
   readFile(path: string, cb: (err: Error | null, data: Buffer) => void): void;
   createReadStream(
     path: string,
-    cb: (err: Error | null, stream: SmbReadStream) => void,
+    optsOrCb:
+      | StreamOpts
+      | ((err: Error | null, stream: SmbReadStream) => void),
+    cb?: (err: Error | null, stream: SmbReadStream) => void,
   ): void;
+  getSize(path: string, cb: (err: Error | null, size: number) => void): void;
   readdir(
     path: string,
     cb: (err: Error | null, files: string[]) => void,
@@ -127,8 +136,17 @@ function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
 }
 
 const SMB_TIMEOUT_MS = 15000;
-// Leer un DBF grande por SMB puede tardar mas que una prueba de conexion.
-const SMB_READ_TIMEOUT_MS = 120000;
+// Watchdog de inactividad de la lectura: si no llega NINGUN bloque nuevo en
+// este tiempo, se considera un cuelgue y se aborta. No limita la duracion
+// total: un host lento puede tardar lo que haga falta mientras avance.
+const SMB_STALL_MS = 45000;
+// Reintentos ante errores transitorios (STATUS_PENDING, cortes de red).
+const SMB_READ_RETRIES = 3;
+const SMB_RETRY_DELAY_MS = 800;
+// Lectura paralela por rangos: 4 conexiones acelera en redes con latencia; mas
+// conexiones saturan al servidor (STATUS_PENDING). Solo para archivos grandes.
+const PARALLEL_PARTS = 4;
+const PARALLEL_MIN_BYTES = 1024 * 1024; // 1 MB
 const TCP_PROBE_MS = 5000;
 const SMB_PORT = 445;
 
@@ -196,42 +214,234 @@ export async function smbReadFile(
   if (!probe.ok) throw new Error(`Red: ${probe.detail}`);
 
   const Smb2 = await loadSmb2();
-  const client = makeClient(conn, Smb2);
   const rel = normalizeSmbPath(filePath);
-  try {
-    // Leemos por STREAM (bloques), no readFile de golpe: los DBF grandes hacen
-    // que el servidor responda STATUS_PENDING si se pide todo en una operacion.
-    // El stream lee en trozos y evita ese error, ademas de usar menos memoria.
-    return await withTimeout(
-      new Promise<Buffer>((resolve, reject) => {
-        client.createReadStream(rel, (err, stream) => {
-          if (err) {
-            reject(new Error(smbErrorHint(err)));
-            return;
-          }
-          const total = stream.fileSize ?? 0;
-          let read = 0;
-          const chunks: Buffer[] = [];
-          stream.on("data", (chunk) => {
-            const b = Buffer.from(chunk);
-            chunks.push(b);
-            read += b.length;
-            if (onProgress) onProgress(read, total);
-          });
-          stream.on("end", () => resolve(Buffer.concat(chunks)));
-          stream.on("error", (e) => reject(new Error(smbErrorHint(e))));
-        });
-      }),
-      SMB_READ_TIMEOUT_MS,
-      "leer archivo",
-    );
-  } finally {
+
+  // 1) Intentar lectura PARALELA por rangos (varias conexiones): en redes con
+  //    latencia acelera notablemente (menos ida-y-vuelta en serie). Si falla
+  //    (servidor que no soporta tanta concurrencia), caemos a secuencial.
+  const size = await getFileSize(conn, Smb2, rel).catch(() => 0);
+  if (size > PARALLEL_MIN_BYTES) {
     try {
-      client.disconnect();
-    } catch {
-      /* ignore */
+      return await readParallel(conn, Smb2, rel, size, onProgress);
+    } catch (e) {
+      console.warn(
+        `[smb] lectura paralela fallo (${(e as Error).message}); usando secuencial...`,
+      );
     }
   }
+
+  // 2) Secuencial con reintentos ante errores transitorios (STATUS_PENDING,
+  //    cortes de red): reintentamos con una conexion NUEVA.
+  let lastErr: Error | null = null;
+  for (let attempt = 1; attempt <= SMB_READ_RETRIES; attempt++) {
+    try {
+      return await readOnce(conn, Smb2, rel, onProgress);
+    } catch (e) {
+      lastErr = e as Error;
+      if (!isTransient(lastErr) || attempt === SMB_READ_RETRIES) break;
+      console.warn(
+        `[smb] intento ${attempt} fallo (${lastErr.message}); reintentando...`,
+      );
+      await delay(SMB_RETRY_DELAY_MS * attempt);
+    }
+  }
+  throw lastErr ?? new Error("Fallo la lectura SMB");
+}
+
+/** Tamano del archivo (una conexion efimera). */
+function getFileSize(
+  conn: SmbConnection,
+  Smb2: Smb2Ctor,
+  rel: string,
+): Promise<number> {
+  const client = makeClient(conn, Smb2);
+  return new Promise<number>((resolve, reject) => {
+    client.getSize(rel, (err, size) => {
+      try {
+        client.disconnect();
+      } catch {
+        /* ignore */
+      }
+      if (err) reject(err);
+      else resolve(Number(size));
+    });
+  });
+}
+
+/**
+ * Lectura en paralelo por rangos. Divide el archivo en PARALLEL_PARTS trozos
+ * contiguos y los lee a la vez con conexiones independientes. Cada rango tiene
+ * su propio watchdog de inactividad; si cualquiera falla, se rechaza el todo
+ * (el llamante cae a secuencial). El progreso agrega los bytes de todos.
+ */
+async function readParallel(
+  conn: SmbConnection,
+  Smb2: Smb2Ctor,
+  rel: string,
+  size: number,
+  onProgress?: (read: number, total: number) => void,
+): Promise<Buffer> {
+  const parts = PARALLEL_PARTS;
+  const chunk = Math.ceil(size / parts);
+  const ranges: Array<[number, number]> = [];
+  for (let o = 0; o < size; o += chunk) {
+    ranges.push([o, Math.min(o + chunk, size)]); // [start, end)
+  }
+
+  let readTotal = 0;
+  const bufs = await Promise.all(
+    ranges.map(
+      ([start, end]) =>
+        new Promise<Buffer>((resolve, reject) => {
+          const client = makeClient(conn, Smb2);
+          const cleanup = () => {
+            try {
+              client.disconnect();
+            } catch {
+              /* ignore */
+            }
+          };
+          // end de la lib es INCLUSIVO -> end-1.
+          client.createReadStream(rel, { start, end: end - 1 }, (err, stream) => {
+            if (err) {
+              cleanup();
+              reject(new Error(smbErrorHint(err)));
+              return;
+            }
+            const chunks: Buffer[] = [];
+            let settled = false;
+            let watchdog: ReturnType<typeof setTimeout>;
+            const finish = (fn: () => void) => {
+              if (settled) return;
+              settled = true;
+              clearTimeout(watchdog);
+              cleanup();
+              fn();
+            };
+            const arm = () => {
+              clearTimeout(watchdog);
+              watchdog = setTimeout(() => {
+                try {
+                  stream.destroy?.();
+                } catch {
+                  /* ignore */
+                }
+                finish(() =>
+                  reject(new Error("Rango sin respuesta (timeout).")),
+                );
+              }, SMB_STALL_MS);
+            };
+            arm();
+            stream.on("data", (c) => {
+              if (settled) return;
+              const b = Buffer.from(c);
+              chunks.push(b);
+              readTotal += b.length;
+              if (onProgress) onProgress(readTotal, size);
+              arm();
+            });
+            stream.on("end", () => finish(() => resolve(Buffer.concat(chunks))));
+            stream.on("error", (e) =>
+              finish(() => reject(new Error(smbErrorHint(e)))),
+            );
+          });
+        }),
+    ),
+  );
+  return Buffer.concat(bufs);
+}
+
+/** Una sola lectura completa con conexion propia (watchdog de inactividad). */
+function readOnce(
+  conn: SmbConnection,
+  Smb2: Smb2Ctor,
+  rel: string,
+  onProgress?: (read: number, total: number) => void,
+): Promise<Buffer> {
+  const client = makeClient(conn, Smb2);
+  return new Promise<Buffer>((resolve, reject) => {
+    const cleanup = () => {
+      try {
+        client.disconnect();
+      } catch {
+        /* ignore */
+      }
+    };
+    client.createReadStream(rel, (err, stream) => {
+      if (err) {
+        cleanup();
+        reject(new Error(smbErrorHint(err)));
+        return;
+      }
+      const total = stream.fileSize ?? 0;
+      let read = 0;
+      const chunks: Buffer[] = [];
+      let settled = false;
+
+      // Watchdog de INACTIVIDAD: se reinicia con cada bloque; solo salta si no
+      // llega nada nuevo en SMB_STALL_MS (cuelgue real). No limita la duracion
+      // total, asi un host lento puede tardar lo que necesite si avanza.
+      let watchdog: ReturnType<typeof setTimeout>;
+      const done = (fn: () => void) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(watchdog);
+        cleanup();
+        fn();
+      };
+      const arm = () => {
+        clearTimeout(watchdog);
+        watchdog = setTimeout(() => {
+          try {
+            stream.destroy?.();
+          } catch {
+            /* ignore */
+          }
+          done(() =>
+            reject(
+              new Error(
+                `Sin respuesta del servidor durante ${Math.round(
+                  SMB_STALL_MS / 1000,
+                )}s a mitad de la lectura (leidos ${(read / 1048576).toFixed(1)} MB). La conexion se detuvo; reintenta.`,
+              ),
+            ),
+          );
+        }, SMB_STALL_MS);
+      };
+      arm();
+
+      stream.on("data", (chunk) => {
+        if (settled) return;
+        const b = Buffer.from(chunk);
+        chunks.push(b);
+        read += b.length;
+        if (onProgress) onProgress(read, total);
+        arm();
+      });
+      stream.on("end", () => done(() => resolve(Buffer.concat(chunks))));
+      stream.on("error", (e) =>
+        done(() => reject(new Error(smbErrorHint(e)))),
+      );
+    });
+  });
+}
+
+/** Errores recuperables que justifican reintentar con conexion nueva. */
+function isTransient(e: Error): boolean {
+  const m = (e.message || "").toUpperCase();
+  return (
+    m.includes("STATUS_PENDING") ||
+    m.includes("PENDING") ||
+    m.includes("ECONNRESET") ||
+    m.includes("EPIPE") ||
+    m.includes("ETIMEDOUT") ||
+    m.includes("SE DETUVO") || // nuestro watchdog
+    m.includes("STATUS_IO_TIMEOUT")
+  );
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((r) => setTimeout(r, ms));
 }
 
 /** Lista los archivos de una carpeta del share SMB. */
