@@ -313,26 +313,46 @@ export const api = {
     });
   },
 
+  // --- Catalogo unificado de modulos editables (dinamicos + compilados) ---
+  async estudioAll(): Promise<
+    {
+      id: string;
+      name: string;
+      icon: string;
+      color: string;
+      description: string;
+      kind: "dynamic" | "builtin" | "other";
+      editableFiles: boolean;
+    }[]
+  > {
+    return request("/api/m/estudio/all");
+  },
+
   // --- Archivos de un modulo (editor de codigo estilo WordPress) ---
+  // builtin=true selecciona los archivos fuente de un modulo compilado.
   async estudioFiles(
     id: string,
+    builtin = false,
   ): Promise<{ path: string; size: number; isDir: boolean }[]> {
-    return request(`/api/m/estudio/files/${id}`);
+    return request(`/api/m/estudio/files/${id}${builtin ? "?builtin=true" : ""}`);
   },
   async estudioReadFile(
     id: string,
     filePath: string,
+    builtin = false,
   ): Promise<{ path: string; content: string }> {
+    const b = builtin ? "&builtin=true" : "";
     return request(
-      `/api/m/estudio/files/${id}/content?path=${encodeURIComponent(filePath)}`,
+      `/api/m/estudio/files/${id}/content?path=${encodeURIComponent(filePath)}${b}`,
     );
   },
   async estudioWriteFile(
     id: string,
     filePath: string,
     content: string,
-  ): Promise<{ path: string }> {
-    return request(`/api/m/estudio/files/${id}/content`, {
+    builtin = false,
+  ): Promise<{ path: string; needsRebuild?: boolean }> {
+    return request(`/api/m/estudio/files/${id}/content${builtin ? "?builtin=true" : ""}`, {
       method: "PUT",
       body: JSON.stringify({ path: filePath, content }),
     });
@@ -345,6 +365,9 @@ export const api = {
       `/api/m/estudio/files/${id}/content?path=${encodeURIComponent(filePath)}`,
       { method: "DELETE" },
     );
+  },
+  async estudioRebuild(): Promise<{ started: boolean }> {
+    return request("/api/m/estudio/rebuild", { method: "POST" });
   },
 
   // --- Datos de un modulo dinamico (CRUD generico) ---

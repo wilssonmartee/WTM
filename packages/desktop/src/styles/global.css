@@ -1423,7 +1423,7 @@ button {
 .wtm-code {
   flex: 1;
   display: flex;
-  min-height: 0;
+  min-height: 300px; /* altura garantizada aunque el flex no la provea */
   background: #10151c;
   border-radius: 8px;
   overflow: hidden;
@@ -1441,45 +1441,23 @@ button {
   overflow: hidden;
   min-width: 38px;
 }
-/* Overlay: el <pre> coloreado y el <textarea> transparente se superponen
-   exactamente. El usuario escribe en el textarea (caret/seleccion nativos) y
-   ve los colores del pre debajo. Mismas metricas tipograficas = alineados. */
-.wtm-code__editwrap {
-  position: relative;
+.wtm-code__area {
   flex: 1;
   min-width: 0;
-  overflow: hidden;
-}
-.wtm-code__pre,
-.wtm-code__area {
   margin: 0;
   padding: 10px 12px;
+  background: #10151c;
+  color: #d7e0ea;              /* texto CLARO y visible */
+  caret-color: #67e0a3;        /* caret verde */
   font-family: var(--wtm-mono);
   font-size: 12.5px;
   line-height: 1.5;
   white-space: pre;
   tab-size: 2;
   border: 0;
-  overflow: auto;
-}
-.wtm-code__pre {
-  position: absolute;
-  inset: 0;
-  color: #d7e0ea;
-  pointer-events: none;
-  z-index: 0;
-}
-.wtm-code__area {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  background: transparent;
-  color: transparent;         /* el texto lo pinta el <pre> de abajo */
-  caret-color: #67e0a3;       /* pero el caret si es visible */
   outline: none;
   resize: none;
-  z-index: 1;
+  overflow: auto;
   cursor: text;
   user-select: text;
   -webkit-user-select: text;
@@ -1488,15 +1466,11 @@ button {
   outline: none;
 }
 .wtm-code__area::selection {
-  background: rgba(90, 160, 230, 0.4);
+  background: rgba(90, 160, 230, 0.45);
 }
-/* Colores de los tokens */
-.wtm-code__pre .tok-key { color: #79c0ff; }
-.wtm-code__pre .tok-str { color: #a5d6a3; }
-.wtm-code__pre .tok-num { color: #f0a868; }
-.wtm-code__pre .tok-bool { color: #d2a8ff; }
-.wtm-code__pre .tok-kw { color: #ff7b9c; }
-.wtm-code__pre .tok-com { color: #6a7886; font-style: italic; }
+.wtm-code__area::placeholder {
+  color: #4a5668;
+}
 
 /* --- Boton flotante: salir de pantalla completa (cliente nativo) --- */
 .wtm-exitfs {

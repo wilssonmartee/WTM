@@ -17,7 +17,13 @@ import {
   deleteFile,
   moduleExists,
   safeModuleId,
+  isBuiltinEditable,
+  listBuiltinFiles,
+  readBuiltinFile,
+  writeBuiltinFile,
 } from "./mstore.js";
+import { rebuild } from "../sysops.js";
+import { catalog } from "./registry.js";
 
 /**
  * Router del ESTUDIO DE MODULOS (modulo de sistema).
@@ -95,36 +101,77 @@ export function estudioRouter(): Router {
     res.json({ ok: true, data: { id: req.params.id, purged: purge } });
   });
 
+  // ---- Catalogo UNIFICADO: todos los modulos editables ----
+  // Dinamicos (archivos en data/modules) + compilados editables (inventario,
+  // articulos). Asi el Estudio puede listar y abrir CUALQUIER modulo.
+  router.get("/all", (_req, res) => {
+    const cat = catalog();
+    const out = cat
+      .filter((m) => m.category !== "sistema") // los de sistema no se editan aqui
+      .map((m) => ({
+        id: m.id,
+        name: m.name,
+        icon: m.icon,
+        color: m.color,
+        description: m.description,
+        kind: moduleExists(m.id)
+          ? "dynamic"
+          : isBuiltinEditable(m.id)
+            ? "builtin"
+            : "other",
+        editableFiles: moduleExists(m.id) || isBuiltinEditable(m.id),
+      }));
+    res.json({ ok: true, data: out });
+  });
+
   // ---- ARCHIVOS del modulo (editor estilo WordPress) ----
+  // Funciona para modulos DINAMICOS (data/modules/<id>) y COMPILADOS
+  // (packages/core/src/modules/<id>.ts). El flag ?builtin=true selecciona
+  // los archivos fuente del modulo compilado.
+
+  function isBuiltinReq(req: AuthedRequest, id: string): boolean {
+    return req.query.builtin === "true" || (!moduleExists(id) && isBuiltinEditable(id));
+  }
 
   // Listar archivos de un modulo.
   router.get("/files/:id", (req: AuthedRequest, res) => {
     if (!guardAdmin(req, res)) return;
     const id = req.params.id;
-    if (!safeModuleId(id) || !moduleExists(id)) {
+    if (!safeModuleId(id)) {
+      res.status(400).json({ ok: false, error: "Identificador invalido" });
+      return;
+    }
+    if (isBuiltinReq(req, id)) {
+      if (!isBuiltinEditable(id)) {
+        res.status(404).json({ ok: false, error: "Modulo no editable" });
+        return;
+      }
+      res.json({ ok: true, data: listBuiltinFiles(id) });
+      return;
+    }
+    if (!moduleExists(id)) {
       res.status(404).json({ ok: false, error: "Modulo no encontrado" });
       return;
     }
     res.json({ ok: true, data: listFiles(id) });
   });
 
-  // Leer el contenido de un archivo. La ruta del archivo va como query (?path=).
+  // Leer el contenido de un archivo.
   router.get("/files/:id/content", (req: AuthedRequest, res) => {
     if (!guardAdmin(req, res)) return;
     const id = req.params.id;
     const rel = String(req.query.path ?? "");
-    if (!safeModuleId(id) || !moduleExists(id)) {
-      res.status(404).json({ ok: false, error: "Modulo no encontrado" });
-      return;
-    }
     try {
-      res.json({ ok: true, data: { path: rel, content: readFileText(id, rel) } });
+      const content = isBuiltinReq(req, id)
+        ? readBuiltinFile(id, rel)
+        : readFileText(id, rel);
+      res.json({ ok: true, data: { path: rel, content } });
     } catch (e) {
       res.status(400).json({ ok: false, error: (e as Error).message });
     }
   });
 
-  // Guardar (crear o sobrescribir) un archivo.
+  // Guardar un archivo.
   router.put("/files/:id/content", (req: AuthedRequest, res) => {
     if (!guardAdmin(req, res)) return;
     const id = req.params.id;
@@ -132,23 +179,24 @@ export function estudioRouter(): Router {
       path?: string;
       content?: string;
     };
-    if (!safeModuleId(id) || !moduleExists(id)) {
-      res.status(404).json({ ok: false, error: "Modulo no encontrado" });
-      return;
-    }
     if (!rel || typeof content !== "string") {
       res.status(400).json({ ok: false, error: "Falta path o content" });
       return;
     }
     try {
-      writeFileText(id, rel, content);
-      res.json({ ok: true, data: { path: rel } });
+      if (isBuiltinReq(req, id)) {
+        writeBuiltinFile(id, rel, content);
+        res.json({ ok: true, data: { path: rel, needsRebuild: true } });
+      } else {
+        writeFileText(id, rel, content);
+        res.json({ ok: true, data: { path: rel, needsRebuild: false } });
+      }
     } catch (e) {
       res.status(400).json({ ok: false, error: (e as Error).message });
     }
   });
 
-  // Borrar un archivo del modulo.
+  // Borrar un archivo del modulo (solo dinamicos).
   router.delete("/files/:id/content", (req: AuthedRequest, res) => {
     if (!guardAdmin(req, res)) return;
     const id = req.params.id;
@@ -157,7 +205,6 @@ export function estudioRouter(): Router {
       res.status(404).json({ ok: false, error: "Modulo no encontrado" });
       return;
     }
-    // No permitir borrar los archivos nucleo del modulo.
     if (rel === "manifest.json" || rel === "schema.json") {
       res.status(400).json({ ok: false, error: "Ese archivo no se puede borrar" });
       return;
@@ -168,6 +215,14 @@ export function estudioRouter(): Router {
     } catch (e) {
       res.status(400).json({ ok: false, error: (e as Error).message });
     }
+  });
+
+  // Recompilar el sistema (tras editar un modulo compilado). Devuelve de
+  // inmediato; el progreso real se puede ver con el Terminal (wtm rebuild).
+  router.post("/rebuild", (req: AuthedRequest, res) => {
+    if (!guardAdmin(req, res)) return;
+    res.json({ ok: true, data: { started: true } });
+    void rebuild(() => {});
   });
 
   return router;

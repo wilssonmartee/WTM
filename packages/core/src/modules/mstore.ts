@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { config } from "../config.js";
+import { REPO_ROOT } from "../updater/git.js";
 
 /**
  * Almacen de ARCHIVOS de los modulos dinamicos (estilo WordPress: cada modulo
@@ -142,4 +143,67 @@ export function readJson<T>(id: string, relPath: string): T | null {
   } catch {
     return null;
   }
+}
+
+// ============================================================
+//  Archivos FUENTE de modulos compilados (inventario, articulos)
+// ============================================================
+//
+// Los modulos "reales" viven como TypeScript en packages/core/src/modules/.
+// Editar su fuente desde la interfaz es posible (como el editor de archivos de
+// temas de WordPress), pero requiere RECOMPILAR para que surta efecto. Aqui
+// exponemos lectura/escritura de esos archivos de forma segura.
+
+/** Carpeta de codigo fuente de los modulos del core. */
+export function coreModulesSrcDir(): string {
+  return path.join(REPO_ROOT, "packages", "core", "src", "modules");
+}
+
+/** Archivos fuente que componen un modulo compilado. */
+const BUILTIN_SOURCES: Record<string, string[]> = {
+  inventario: ["inventario.ts"],
+  articulos: ["articulos.ts", "smb.ts", "smb-deps.d.ts"],
+};
+
+export function isBuiltinEditable(id: string): boolean {
+  return id in BUILTIN_SOURCES;
+}
+
+/** Lista los archivos fuente editables de un modulo compilado. */
+export function listBuiltinFiles(id: string): FileEntry[] {
+  const dir = coreModulesSrcDir();
+  const files = BUILTIN_SOURCES[id] ?? [];
+  return files
+    .filter((f) => fs.existsSync(path.join(dir, f)))
+    .map((f) => {
+      let size = 0;
+      try {
+        size = fs.statSync(path.join(dir, f)).size;
+      } catch {
+        /* ignore */
+      }
+      return { path: f, size, isDir: false };
+    });
+}
+
+/** Resuelve de forma segura un archivo fuente de un modulo compilado. */
+function resolveBuiltinFile(id: string, relPath: string): string {
+  const allowed = BUILTIN_SOURCES[id] ?? [];
+  const name = relPath.replace(/\\/g, "/").replace(/^\/+/, "");
+  if (!allowed.includes(name)) {
+    throw new Error("Ese archivo no pertenece al modulo");
+  }
+  return path.join(coreModulesSrcDir(), name);
+}
+
+export function readBuiltinFile(id: string, relPath: string): string {
+  return fs.readFileSync(resolveBuiltinFile(id, relPath), "utf8");
+}
+
+export function writeBuiltinFile(
+  id: string,
+  relPath: string,
+  text: string,
+): void {
+  fs.writeFileSync(resolveBuiltinFile(id, relPath), text, "utf8");
 }

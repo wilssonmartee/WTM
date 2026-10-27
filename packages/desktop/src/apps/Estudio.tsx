@@ -192,6 +192,17 @@ function emptyDef(): DynModuleDef {
   };
 }
 
+/** Entrada del catalogo unificado (dinamicos + compilados editables). */
+interface AllMod {
+  id: string;
+  name: string;
+  icon: string;
+  color: string;
+  description: string;
+  kind: "dynamic" | "builtin" | "other";
+  editableFiles: boolean;
+}
+
 export function Estudio({ module }: { module: ModuleManifest }) {
   const { user, refreshSession } = useAuth();
   const isAdmin =
@@ -199,8 +210,11 @@ export function Estudio({ module }: { module: ModuleManifest }) {
 
   const [view, setView] = useState<View>("lista");
   const [list, setList] = useState<DynModuleDef[]>([]);
+  const [allMods, setAllMods] = useState<AllMod[]>([]);
   const [draft, setDraft] = useState<DynModuleDef>(emptyDef());
   const [isNew, setIsNew] = useState(true);
+  // Cuando editamos un modulo COMPILADO, solo mostramos su editor de archivos.
+  const [builtinEdit, setBuiltinEdit] = useState<AllMod | null>(null);
   const [msg, setMsg] = useState<{ tone: "error" | "success"; text: string } | null>(
     null,
   );
@@ -212,11 +226,22 @@ export function Estudio({ module }: { module: ModuleManifest }) {
       .estudioList()
       .then(setList)
       .catch((e) => setMsg({ tone: "error", text: String(e.message ?? e) }));
+    api
+      .estudioAll()
+      .then(setAllMods)
+      .catch(() => {});
   }, []);
 
   useEffect(() => load(), [load]);
 
+  function editBuiltin(m: AllMod) {
+    setBuiltinEdit(m);
+    setMsg(null);
+    setView("editor");
+  }
+
   function newModule() {
+    setBuiltinEdit(null);
     setDraft(emptyDef());
     setIsNew(true);
     setMsg(null);
@@ -224,6 +249,7 @@ export function Estudio({ module }: { module: ModuleManifest }) {
   }
 
   function fromTemplate(make: () => DynModuleDef) {
+    setBuiltinEdit(null);
     setDraft(make());
     setIsNew(true);
     setMsg(null);
@@ -231,6 +257,7 @@ export function Estudio({ module }: { module: ModuleManifest }) {
   }
 
   function edit(def: DynModuleDef) {
+    setBuiltinEdit(null);
     setDraft(JSON.parse(JSON.stringify(def)));
     setIsNew(false);
     setMsg(null);
@@ -310,8 +337,10 @@ export function Estudio({ module }: { module: ModuleManifest }) {
         {view === "lista" && (
           <ListView
             list={list}
+            allMods={allMods}
             isAdmin={isAdmin}
             onEdit={edit}
+            onEditBuiltin={editBuiltin}
             onRemove={remove}
             onTemplate={fromTemplate}
           />
@@ -319,7 +348,20 @@ export function Estudio({ module }: { module: ModuleManifest }) {
 
         {view === "ayuda" && <HelpView />}
 
-        {view === "editor" && (
+        {/* Editar un modulo COMPILADO: solo su editor de archivos fuente. */}
+        {view === "editor" && builtinEdit && (
+          <div>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
+              <Button variant="ghost" onClick={() => setView("lista")}>
+                ← Volver
+              </Button>
+              <h3 style={{ margin: 0 }}>Codigo: {builtinEdit.name}</h3>
+            </div>
+            <FileManager moduleId={builtinEdit.id} builtin />
+          </div>
+        )}
+
+        {view === "editor" && !builtinEdit && (
           <Editor
             draft={draft}
             setDraft={setDraft}
@@ -340,19 +382,26 @@ export function Estudio({ module }: { module: ModuleManifest }) {
 // ================= Lista de modulos =================
 function ListView({
   list,
+  allMods,
   isAdmin,
   onEdit,
+  onEditBuiltin,
   onRemove,
   onTemplate,
 }: {
   list: DynModuleDef[];
+  allMods: AllMod[];
   isAdmin: boolean;
   onEdit: (d: DynModuleDef) => void;
+  onEditBuiltin: (m: AllMod) => void;
   onRemove: (d: DynModuleDef) => void;
   onTemplate: (make: () => DynModuleDef) => void;
 }) {
+  // Modulos compilados editables que NO son dinamicos (inventario, articulos).
+  const builtins = allMods.filter((m) => m.kind === "builtin");
   return (
     <>
+      <h3 style={h3}>Mis modulos (creados aqui)</h3>
       {list.length === 0 ? (
         <Notice>
           Aun no has creado modulos. Empieza con una <b>plantilla</b> de abajo o
@@ -389,6 +438,32 @@ function ListView({
             </div>
           ))}
         </div>
+      )}
+
+      {/* Modulos del sistema con codigo (editables por archivos, requieren
+          recompilar). Permite tocar inventario/articulos como en WordPress. */}
+      {isAdmin && builtins.length > 0 && (
+        <>
+          <h3 style={h3}>Modulos con codigo (avanzado)</h3>
+          <div style={{ display: "grid", gap: 8, marginBottom: 20 }}>
+            {builtins.map((m) => (
+              <div key={m.id} className="wtm-estudio-card">
+                <span className="wtm-estudio-card__icon" style={{ background: m.color }}>
+                  <Icon name={m.icon} size={18} />
+                </span>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontWeight: 600 }}>{m.name}</div>
+                  <div style={{ fontSize: 12, color: "var(--wtm-text-dim)" }}>
+                    Modulo del sistema · codigo TypeScript · id: {m.id}
+                  </div>
+                </div>
+                <Button variant="default" onClick={() => onEditBuiltin(m)}>
+                  <Icon name="code" size={13} /> Editar codigo
+                </Button>
+              </div>
+            ))}
+          </div>
+        </>
       )}
 
       {isAdmin && (
