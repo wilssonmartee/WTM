@@ -327,9 +327,23 @@ const desktopDist =
   path.resolve(__dirname, "..", "..", "desktop", "dist");
 
 if (fs.existsSync(path.join(desktopDist, "index.html"))) {
-  app.use(express.static(desktopDist));
-  // SPA fallback: cualquier ruta que no sea /api devuelve el index.
+  // Los ASSETS llevan hash en el nombre (index-XXXX.js): son inmutables, se
+  // pueden cachear fuerte. El index.html NO debe cachearse, para que el
+  // navegador siempre descubra la version nueva tras una actualizacion.
+  app.use(
+    express.static(desktopDist, {
+      setHeaders: (res, filePath) => {
+        if (filePath.endsWith("index.html")) {
+          res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+        } else if (filePath.includes(`${path.sep}assets${path.sep}`)) {
+          res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+        }
+      },
+    }),
+  );
+  // SPA fallback: cualquier ruta que no sea /api devuelve el index SIN cachear.
   app.get(/^(?!\/api|\/ws).*/, (_req, res) => {
+    res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
     res.sendFile(path.join(desktopDist, "index.html"));
   });
   console.log(`[web] Sirviendo escritorio desde ${desktopDist}`);
