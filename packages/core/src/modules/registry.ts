@@ -15,6 +15,7 @@ import {
   dynamicManifests,
   dynamicRouter,
   isDynamic,
+  deleteDef,
 } from "./dynamic.js";
 import { estudioRouter } from "./estudio.js";
 
@@ -138,6 +139,14 @@ export async function uninstall(
   id: string,
   purge: boolean,
 ): Promise<{ ok: boolean; error?: string; removedDeps?: string[] }> {
+  // Modulos dinamicos (creados con el Estudio): su "desinstalacion" es borrar
+  // su carpeta de archivos y, si purge, su tabla de datos. No estan en el array
+  // estatico, por eso antes daba "Modulo desconocido".
+  if (isDynamic(id)) {
+    deleteDef(id, purge);
+    return { ok: true, removedDeps: [] };
+  }
+
   const mod = findModule(id);
   if (!mod) return { ok: false, error: `Modulo desconocido: ${id}` };
   if (!isInstalled(id)) return { ok: true };

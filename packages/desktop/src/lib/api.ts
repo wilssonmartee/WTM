@@ -313,6 +313,40 @@ export const api = {
     });
   },
 
+  // --- Archivos de un modulo (editor de codigo estilo WordPress) ---
+  async estudioFiles(
+    id: string,
+  ): Promise<{ path: string; size: number; isDir: boolean }[]> {
+    return request(`/api/m/estudio/files/${id}`);
+  },
+  async estudioReadFile(
+    id: string,
+    filePath: string,
+  ): Promise<{ path: string; content: string }> {
+    return request(
+      `/api/m/estudio/files/${id}/content?path=${encodeURIComponent(filePath)}`,
+    );
+  },
+  async estudioWriteFile(
+    id: string,
+    filePath: string,
+    content: string,
+  ): Promise<{ path: string }> {
+    return request(`/api/m/estudio/files/${id}/content`, {
+      method: "PUT",
+      body: JSON.stringify({ path: filePath, content }),
+    });
+  },
+  async estudioDeleteFile(
+    id: string,
+    filePath: string,
+  ): Promise<{ path: string }> {
+    return request(
+      `/api/m/estudio/files/${id}/content?path=${encodeURIComponent(filePath)}`,
+      { method: "DELETE" },
+    );
+  },
+
   // --- Datos de un modulo dinamico (CRUD generico) ---
   async dynDef(moduleId: string): Promise<DynModuleDef> {
     return request(`/api/m/${moduleId}/def`);

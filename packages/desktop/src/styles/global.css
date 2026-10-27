@@ -1308,6 +1308,154 @@ button {
   max-height: 320px;
 }
 
+/* Sub-pestanas del editor (Diseno / Archivos) */
+.wtm-subtabs {
+  display: inline-flex;
+  border: 1px solid var(--wtm-border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.wtm-subtab {
+  padding: 6px 14px;
+  font-size: 12px;
+  border: none;
+  background: var(--wtm-surface);
+  color: var(--wtm-text);
+  cursor: pointer;
+}
+.wtm-subtab.is-active {
+  background: var(--wtm-accent);
+  color: #fff;
+}
+.wtm-subtab:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* --- Administrador de archivos (editor estilo WordPress) --- */
+.wtm-filemgr {
+  display: flex;
+  gap: 12px;
+  height: 460px;
+  border: 1px solid var(--wtm-border);
+  border-radius: 10px;
+  overflow: hidden;
+}
+.wtm-filemgr__side {
+  width: 210px;
+  flex-shrink: 0;
+  border-right: 1px solid var(--wtm-border);
+  background: var(--wtm-surface);
+  display: flex;
+  flex-direction: column;
+}
+.wtm-filemgr__side-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 10px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--wtm-text-dim);
+  border-bottom: 1px solid var(--wtm-border);
+}
+.wtm-filemgr__list {
+  flex: 1;
+  overflow: auto;
+}
+.wtm-filemgr__file {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  font-size: 12.5px;
+  font-family: var(--wtm-mono);
+  cursor: pointer;
+  color: var(--wtm-text);
+  border-left: 2px solid transparent;
+}
+.wtm-filemgr__file:hover {
+  background: var(--wtm-bg);
+}
+.wtm-filemgr__file.is-active {
+  background: var(--wtm-bg);
+  border-left-color: var(--wtm-accent);
+  font-weight: 600;
+}
+.wtm-filemgr__name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.wtm-filemgr__del {
+  border: none;
+  background: none;
+  color: var(--wtm-text-dim);
+  cursor: pointer;
+  padding: 2px;
+  opacity: 0;
+}
+.wtm-filemgr__file:hover .wtm-filemgr__del {
+  opacity: 1;
+}
+.wtm-filemgr__main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 10px;
+}
+.wtm-filemgr__bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+.wtm-filemgr__active {
+  font-family: var(--wtm-mono);
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+/* Editor de codigo (textarea + numeros de linea) */
+.wtm-code {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+  background: #10151c;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid #222c38;
+}
+.wtm-code__gutter {
+  padding: 10px 8px;
+  text-align: right;
+  color: #55657a;
+  background: #0b1016;
+  font-family: var(--wtm-mono);
+  font-size: 12.5px;
+  line-height: 1.5;
+  user-select: none;
+  overflow: hidden;
+  min-width: 38px;
+}
+.wtm-code__area {
+  flex: 1;
+  padding: 10px 12px;
+  background: transparent;
+  color: #d7e0ea;
+  border: none;
+  outline: none;
+  resize: none;
+  font-family: var(--wtm-mono);
+  font-size: 12.5px;
+  line-height: 1.5;
+  white-space: pre;
+  tab-size: 2;
+}
+
 /* --- Boton flotante: salir de pantalla completa (cliente nativo) --- */
 .wtm-exitfs {
   position: fixed;

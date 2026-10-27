@@ -20,6 +20,7 @@ import {
 import { api } from "../lib/api";
 import { useAuth } from "../state/auth";
 import { Icon } from "../components/Icon";
+import { FileManager } from "./estudio/FileManager";
 
 /**
  * ESTUDIO DE MODULOS — crea y edita modulos del sistema sin programar.
@@ -435,6 +436,7 @@ function Editor({
   showCode: boolean;
   setShowCode: (v: boolean) => void;
 }) {
+  const [editorTab, setEditorTab] = useState<"diseno" | "archivos">("diseno");
   function set<K extends keyof DynModuleDef>(key: K, value: DynModuleDef[K]) {
     setDraft({ ...draft, [key]: value });
   }
@@ -469,17 +471,49 @@ function Editor({
     set("fields", arr);
   }
 
+  // El modulo ya existe en disco si no es nuevo: ahi puede editar archivos.
+  const canEditFiles = !isNew;
+
   return (
-    <div style={{ maxWidth: 760 }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
+    <div style={{ maxWidth: 820 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
         <Button variant="ghost" onClick={onCancel}>
           ← Volver
         </Button>
         <h3 style={{ margin: 0 }}>
           {isNew ? "Nuevo modulo" : `Editar: ${draft.name}`}
         </h3>
+        <div style={{ flex: 1 }} />
+        <div className="wtm-subtabs">
+          <button
+            className={`wtm-subtab ${editorTab === "diseno" ? "is-active" : ""}`}
+            onClick={() => setEditorTab("diseno")}
+          >
+            Diseno
+          </button>
+          <button
+            className={`wtm-subtab ${editorTab === "archivos" ? "is-active" : ""}`}
+            onClick={() => setEditorTab("archivos")}
+            disabled={!canEditFiles}
+            title={canEditFiles ? "" : "Guarda el modulo primero para editar sus archivos"}
+          >
+            Archivos (codigo)
+          </button>
+        </div>
       </div>
 
+      {editorTab === "archivos" && canEditFiles ? (
+        <FileManager moduleId={draft.id} />
+      ) : (
+        <DesignTab />
+      )}
+    </div>
+  );
+
+  // El cuerpo del disenador visual, extraido para poder alternar con Archivos.
+  function DesignTab() {
+    return (
+    <>
       <h3 style={h3}>1. Datos del modulo</h3>
       <div style={grid2}>
         <Field label="Nombre">
@@ -640,8 +674,9 @@ function Editor({
           </Button>
         </div>
       )}
-    </div>
-  );
+    </>
+    );
+  }
 }
 
 function FieldRow({
