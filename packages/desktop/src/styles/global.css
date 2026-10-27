@@ -1414,9 +1414,62 @@ button {
   margin-bottom: 8px;
 }
 .wtm-filemgr__active {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   font-family: var(--wtm-mono);
   font-size: 12.5px;
   font-weight: 600;
+}
+.wtm-filemgr__lang {
+  margin-left: 8px;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 2px 7px;
+  border-radius: 10px;
+  background: var(--wtm-bg);
+  border: 1px solid var(--wtm-border);
+  color: var(--wtm-text-dim);
+}
+/* Panel de referencia de la API wtm */
+.wtm-apihelp {
+  background: #0d1117;
+  border: 1px solid #243040;
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin-bottom: 8px;
+  color: #c8d2dc;
+  font-size: 12px;
+}
+.wtm-apihelp__title {
+  font-weight: 700;
+  margin-bottom: 6px;
+  color: #8fd3ff;
+}
+.wtm-apihelp table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.wtm-apihelp td {
+  padding: 2px 6px 2px 0;
+  vertical-align: top;
+}
+.wtm-apihelp td:first-child {
+  white-space: nowrap;
+}
+.wtm-apihelp code {
+  font-family: var(--wtm-mono);
+  color: #a5d6a3;
+}
+.wtm-apihelp__hooks {
+  margin-top: 8px;
+  padding-top: 6px;
+  border-top: 1px solid #243040;
+  color: var(--wtm-text-dim);
+}
+.wtm-apihelp__hooks code {
+  color: #ff9db0;
 }
 
 /* Editor de codigo (textarea + numeros de linea) */

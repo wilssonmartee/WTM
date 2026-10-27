@@ -17,6 +17,7 @@ import {
 } from "./mstore.js";
 import fs from "node:fs";
 import path from "node:path";
+import { makeSandboxApi } from "./sandbox-api.js";
 
 /**
  * Motor de MODULOS DINAMICOS basado en ARCHIVOS (estilo WordPress).
@@ -356,52 +357,26 @@ interface HookCtx {
   now: string;
 }
 
-const scriptCache = new Map<string, { mtime: number; hooks: Record<string, unknown> }>();
+// Cache del CODIGO fuente por modulo (invalidado por mtime). No cacheamos las
+// funciones entre peticiones: deben ejecutarse en el MISMO contexto vm donde se
+// inyecta la API `wtm` de esa peticion (una funcion creada en un contexto no
+// puede leer variables de otro contexto distinto).
+const codeCache = new Map<string, { mtime: number; code: string | null }>();
 
-function loadHooks(id: string): Record<string, unknown> {
+function loadCode(id: string): string | null {
   const file = path.join(moduleDir(id), "logic.js");
-  if (!fs.existsSync(file)) return {};
+  if (!fs.existsSync(file)) return null;
   const stat = fs.statSync(file);
-  const cached = scriptCache.get(id);
-  if (cached && cached.mtime === stat.mtimeMs) return cached.hooks;
-
-  const code = fs.readFileSync(file, "utf8");
-  // El modulo expone sus hooks asignando a `module.exports` o devolviendo un
-  // objeto. Envolvemos el codigo del usuario en una funcion.
-  const sandbox: Record<string, unknown> = {
-    module: { exports: {} },
-    exports: {},
-    console: { log: () => {}, warn: () => {}, error: () => {} },
-    Math,
-    Date,
-    JSON,
-    Number,
-    String,
-    Boolean,
-    Array,
-    Object,
-    parseInt,
-    parseFloat,
-    isNaN,
-  };
+  const cached = codeCache.get(id);
+  if (cached && cached.mtime === stat.mtimeMs) return cached.code;
+  let code: string | null = null;
   try {
-    const context = vm.createContext(sandbox);
-    const wrapped = `(function(module, exports){ "use strict";\n${code}\n})(module, exports);`;
-    const script = new vm.Script(wrapped, { filename: `${id}/logic.js` });
-    script.runInContext(context, { timeout: 1000 });
-    const hooks =
-      ((sandbox.module as { exports?: Record<string, unknown> }).exports as
-        | Record<string, unknown>
-        | undefined) ||
-      (sandbox.exports as Record<string, unknown>) ||
-      {};
-    scriptCache.set(id, { mtime: stat.mtimeMs, hooks });
-    return hooks;
+    code = fs.readFileSync(file, "utf8");
   } catch {
-    // logic.js con error de sintaxis: lo ignoramos (el CRUD sigue funcionando).
-    scriptCache.set(id, { mtime: stat.mtimeMs, hooks: {} });
-    return {};
+    code = null;
   }
+  codeCache.set(id, { mtime: stat.mtimeMs, code });
+  return code;
 }
 
 function runHook(
@@ -410,21 +385,52 @@ function runHook(
   record: Record<string, unknown>,
   ctx: HookCtx,
 ): unknown {
-  const hooks = loadHooks(id);
-  const fn = hooks[hook];
-  if (typeof fn !== "function") return hook === "validate" ? null : record;
+  const code = loadCode(id);
+  if (!code) return hook === "validate" ? null : record;
   try {
+    // API segura `wtm`: acceso a la base de datos del modulo, a datos de OTROS
+    // modulos (solo lectura) y utilidades. Da poder real SIN exponer
+    // require/fs/red (que permitirian ejecutar codigo arbitrario en el server).
+    const wtm = makeSandboxApi({
+      moduleId: id,
+      companyId: ctx.companyId,
+      user: ctx.user,
+    });
     const sandbox: Record<string, unknown> = {
-      __fn: fn,
-      __record: record,
-      __ctx: ctx,
+      module: { exports: {} },
+      exports: {},
+      console: { log: () => {}, warn: () => {}, error: () => {} },
+      wtm,
       Math,
       Date,
       JSON,
+      Number,
+      String,
+      Boolean,
+      Array,
+      Object,
+      parseInt,
+      parseFloat,
+      isNaN,
+      __record: record,
+      __ctx: ctx,
+      __hook: hook,
+      __result: undefined as unknown,
     };
     const context = vm.createContext(sandbox);
-    const script = new vm.Script("__fn(__record, __ctx)");
-    return script.runInContext(context, { timeout: 1000 });
+    // Todo en UN solo contexto: definir los hooks (que ven `wtm`) y ejecutar el
+    // pedido con sus argumentos. Asi el hook tiene acceso real a `wtm`.
+    const wrapped =
+      `(function(module, exports){ "use strict";\n${code}\n})(module, exports);\n` +
+      `var __hooks = module.exports || exports || {};\n` +
+      `if (typeof __hooks[__hook] === "function") {\n` +
+      `  __result = __hooks[__hook](__record, __ctx, wtm);\n` +
+      `}`;
+    const script = new vm.Script(wrapped, { filename: `${id}/logic.js` });
+    script.runInContext(context, { timeout: 2000 });
+    const result = sandbox.__result;
+    if (result === undefined) return hook === "validate" ? null : record;
+    return result;
   } catch (e) {
     if (hook === "validate") return `Error en la logica: ${(e as Error).message}`;
     return record;
@@ -613,27 +619,43 @@ export function dynamicRouter(id: string): Router | null {
 
 // Plantilla inicial de logic.js que ve el usuario al crear un modulo.
 const DEFAULT_LOGIC_JS = `// Logica del modulo (opcional). Se ejecuta en un entorno seguro y aislado.
-// Puedes definir cualquiera de estos "hooks". Todos reciben (record, ctx).
+// Cada hook recibe (record, ctx, wtm):
 //   ctx = { action: 'create'|'update'|'list', user, companyId, now }
+//   wtm = API del sistema (ver abajo). Guardar aplica los cambios al instante.
 //
-// Descomenta y edita lo que necesites. Guardar aplica los cambios al instante.
+// === API 'wtm' disponible ===
+//   wtm.moduleId, wtm.companyId, wtm.user     datos de la peticion
+//   wtm.now(), wtm.uuid()                     utilidades
+//   wtm.data.list(filtro)                     registros de ESTE modulo
+//   wtm.data.count(filtro)                    cuantos hay
+//   wtm.data.sum('columna', filtro)           suma una columna numerica
+//   wtm.related.list('otroModulo', filtro)    leer datos de OTRO modulo
+//
+// Por seguridad NO hay acceso a archivos/red/sistema desde aqui.
 
 module.exports = {
   // Validar antes de guardar. Devuelve un texto de error, o null si todo OK.
-  // validate: function (record, ctx) {
+  // validate: function (record, ctx, wtm) {
   //   if (Number(record.precio) < 0) return "El precio no puede ser negativo";
+  //   // Ejemplo: no permitir codigos repetidos en este mismo modulo.
+  //   if (wtm.data.count({ codigo: record.codigo }) > 0) return "Codigo repetido";
   //   return null;
   // },
 
   // Transformar el registro justo antes de guardarlo.
-  // beforeSave: function (record, ctx) {
+  // beforeSave: function (record, ctx, wtm) {
   //   if (record.nombre) record.nombre = String(record.nombre).toUpperCase();
   //   return record;
   // },
 
+  // Reaccionar despues de guardar (p.ej. registrar, encadenar logica).
+  // afterSave: function (record, ctx, wtm) {
+  //   // (sin retorno)
+  // },
+
   // Agregar campos calculados al listar (no se guardan en la base).
-  // compute: function (record, ctx) {
-  //   record._resumen = (record.nombre || "") + " - " + (record.precio || 0);
+  // compute: function (record, ctx, wtm) {
+  //   record._total = Number(record.cantidad) * Number(record.precio);
   //   return record;
   // },
 };

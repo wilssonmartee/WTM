@@ -881,6 +881,38 @@ function HelpView() {
         usuario necesita al menos ese nivel en el modulo para usarlo.
       </p>
 
+      <h3 style={h3}>Logica avanzada (archivo logic.js)</h3>
+      <p>
+        En la pestana <b>Archivos</b>, el archivo <code>logic.js</code> permite
+        anadir comportamiento con codigo. Defines "hooks" que reciben{" "}
+        <code>(record, ctx, wtm)</code>:
+      </p>
+      <ul style={{ paddingLeft: 20 }}>
+        <li><b>validate</b>: rechazar datos invalidos antes de guardar.</li>
+        <li><b>beforeSave</b>: transformar el registro antes de guardarlo.</li>
+        <li><b>afterSave</b>: reaccionar despues de guardar.</li>
+        <li><b>compute</b>: agregar campos calculados al listar.</li>
+      </ul>
+      <p>
+        El objeto <code>wtm</code> te da acceso REAL a la base de datos:{" "}
+        <code>wtm.data.list/count/sum</code> para este modulo y{" "}
+        <code>wtm.related.list('otroModulo')</code> para conectar con otros
+        modulos. Pulsa el boton <b>API</b> en el editor para ver la referencia.
+      </p>
+
+      <h3 style={h3}>Modulos con codigo (avanzado)</h3>
+      <p>
+        Los modulos del sistema (Inventario, Articulos) se pueden editar en su
+        codigo fuente TypeScript. Tienen todo el poder del servidor (base de
+        datos directa, archivos, dependencias npm), pero al guardarlos hay que{" "}
+        <b>Recompilar</b> para aplicar los cambios.
+      </p>
+
+      <Notice>
+        Seguridad: <code>logic.js</code> corre en un entorno aislado (sin acceso
+        a archivos del sistema ni a la red) para proteger el servidor. Si
+        necesitas esas capacidades, usa un modulo con codigo (TypeScript).
+      </Notice>
       <Notice>
         Consejo: empieza simple con 3-4 campos. Siempre puedes agregar mas
         campos despues; los datos ya guardados se conservan.

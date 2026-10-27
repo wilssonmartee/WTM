@@ -40,6 +40,7 @@ export function FileManager({
   const [rebuilding, setRebuilding] = useState(false);
   const [newName, setNewName] = useState("");
   const [showNew, setShowNew] = useState(false);
+  const [showApi, setShowApi] = useState(false);
   const openedOnce = useRef(false);
 
   const dirty = content !== original;
@@ -274,14 +275,46 @@ export function FileManager({
             <>
               <div className="wtm-filemgr__bar">
                 <span className="wtm-filemgr__active">
-                  {active}
-                  {dirty && <span style={{ color: "var(--wtm-accent)" }}> ●</span>}
+                  <Icon name="code" size={13} /> {active}
+                  {dirty && (
+                    <span style={{ color: "var(--wtm-accent)" }} title="Cambios sin guardar">
+                      {" "}
+                      ●
+                    </span>
+                  )}
                 </span>
+                <span className="wtm-filemgr__lang">{langOf(active)}</span>
                 <div style={{ flex: 1 }} />
+                {active.endsWith(".json") && (
+                  <Button
+                    variant="default"
+                    onClick={() => {
+                      try {
+                        setContent(JSON.stringify(JSON.parse(content), null, 2));
+                        setMsg({ tone: "success", text: "JSON formateado." });
+                      } catch {
+                        setMsg({ tone: "error", text: "El JSON tiene errores; no se puede formatear." });
+                      }
+                    }}
+                    title="Ordenar el JSON con sangria"
+                  >
+                    Formatear
+                  </Button>
+                )}
+                {active === "logic.js" && (
+                  <Button
+                    variant="default"
+                    onClick={() => setShowApi((v) => !v)}
+                    title="Ver la API disponible en logic.js"
+                  >
+                    <Icon name="database" size={13} /> API
+                  </Button>
+                )}
                 <Button variant="primary" onClick={save} disabled={saving || !dirty}>
                   <Icon name="save" size={13} /> {saving ? "Guardando..." : "Guardar"}
                 </Button>
               </div>
+              {showApi && active === "logic.js" && <ApiHelp />}
               <CodeEditor
                 value={content}
                 onChange={setContent}
@@ -308,6 +341,28 @@ export function FileManager({
           </span>
         </div>
       )}
+    </div>
+  );
+}
+
+/** Referencia rapida de la API `wtm` disponible dentro de logic.js. */
+function ApiHelp() {
+  return (
+    <div className="wtm-apihelp">
+      <div className="wtm-apihelp__title">API disponible en logic.js</div>
+      <table>
+        <tbody>
+          <tr><td><code>wtm.data.list(filtro)</code></td><td>Registros de este modulo</td></tr>
+          <tr><td><code>wtm.data.count(filtro)</code></td><td>Cuantos registros hay</td></tr>
+          <tr><td><code>wtm.data.sum('col', filtro)</code></td><td>Suma una columna numerica</td></tr>
+          <tr><td><code>wtm.related.list('modulo', filtro)</code></td><td>Leer datos de OTRO modulo</td></tr>
+          <tr><td><code>wtm.companyId / wtm.user</code></td><td>Empresa y usuario actuales</td></tr>
+          <tr><td><code>wtm.now() / wtm.uuid()</code></td><td>Fecha ISO / id unico</td></tr>
+        </tbody>
+      </table>
+      <div className="wtm-apihelp__hooks">
+        Hooks: <code>validate</code>, <code>beforeSave</code>, <code>afterSave</code>, <code>compute</code> — cada uno recibe <code>(record, ctx, wtm)</code>.
+      </div>
     </div>
   );
 }
