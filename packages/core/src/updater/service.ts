@@ -169,6 +169,41 @@ export async function getHistory() {
 }
 
 // ---- Reconstruir con salida en vivo ----
+/**
+ * Instala las dependencias (npm install). Necesario cuando una actualizacion
+ * trae paquetes nuevos en package.json: sin esto, el build falla con "Cannot
+ * find module". Es idempotente y rapido si ya esta todo instalado.
+ */
+function npmInstall(): Promise<{ ok: boolean; detail: string }> {
+  return new Promise((resolve) => {
+    const child = spawn("npm", ["install", "--no-audit", "--no-fund"], {
+      cwd: REPO_ROOT,
+      env: process.env,
+    });
+    let tail = "";
+    const onData = (buf: Buffer) => {
+      const text = buf.toString();
+      tail = (tail + text).slice(-3000);
+      for (const raw of text.split("\n")) {
+        const l = raw.trim();
+        if (l && /(added|removed|packages|npm warn|npm error|changed)/i.test(l)) {
+          emit("building", l.slice(0, 160), /error/i.test(l) ? "error" : "info");
+        }
+      }
+    };
+    child.stdout.on("data", onData);
+    child.stderr.on("data", onData);
+    child.on("close", (code) =>
+      resolve(
+        code === 0
+          ? { ok: true, detail: "deps ok" }
+          : { ok: false, detail: tail.slice(-2000) || "npm install fallo" },
+      ),
+    );
+    child.on("error", (e) => resolve({ ok: false, detail: e.message }));
+  });
+}
+
 function rebuild(): Promise<{ ok: boolean; detail: string }> {
   return new Promise((resolve) => {
     const child = spawn("npm", ["run", "build"], {
@@ -277,6 +312,35 @@ async function runUpdate() {
     await gitlib.applyRemote(config.branch);
     const applied = await gitlib.headHash();
 
+    await emit("building", "Instalando dependencias...");
+    const deps = await npmInstall();
+    if (!deps.ok) {
+      await emit(
+        "reverting",
+        "Fallo instalar dependencias. Revirtiendo...",
+        "error",
+      );
+      await gitlib.checkout(prev);
+      await npmInstall();
+      await rebuild();
+      log({
+        action: "revert-failed-build",
+        fromCommit: applied,
+        toCommit: prev,
+        ok: false,
+        detail: deps.detail,
+      });
+      busy = false;
+      phase = "error";
+      await emit(
+        "error",
+        "No se pudieron instalar las dependencias. Se restauro la version anterior.",
+        "error",
+      );
+      phase = "idle";
+      return;
+    }
+
     await emit("building", "Compilando la nueva version...");
     const build = await rebuild();
     if (!build.ok) {
@@ -319,6 +383,7 @@ async function runUpdate() {
     try {
       await emit("reverting", "Error. Restaurando version anterior...", "error");
       await gitlib.checkout(prev);
+      await npmInstall();
       await rebuild();
     } catch {
       /* se registra abajo */
@@ -361,6 +426,8 @@ async function runRollback(targetHash: string) {
   try {
     await emit("downloading", `Cambiando a ${targetHash.slice(0, 7)}...`);
     await gitlib.checkout(targetHash);
+    await emit("building", "Instalando dependencias...");
+    await npmInstall();
     await emit("building", "Compilando...");
     const build = await rebuild();
     if (!build.ok) {

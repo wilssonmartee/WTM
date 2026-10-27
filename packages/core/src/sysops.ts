@@ -60,6 +60,14 @@ export async function rebuild(onLine: LineSink): Promise<boolean> {
   }
   busy = true;
   try {
+    // Instalar dependencias primero: un modulo editado o una actualizacion
+    // pueden necesitar paquetes nuevos. Idempotente y rapido si ya estan.
+    onLine("info", "Instalando dependencias (npm install)...");
+    const dep = await run("npm", ["install", "--no-audit", "--no-fund"], onLine);
+    if (dep !== 0) {
+      onLine("stderr", `npm install fallo (codigo ${dep}).`);
+      return false;
+    }
     onLine("info", "Recompilando WTM (npm run build)...");
     const code = await run("npm", ["run", "build"], onLine);
     if (code === 0) {

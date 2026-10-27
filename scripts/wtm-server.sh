@@ -29,6 +29,12 @@ is_running() {
 }
 
 build_if_needed() {
+  # Instalar dependencias si faltan (p.ej. tras un git pull con paquetes
+  # nuevos). Si node_modules no existe o el core no esta compilado, instalamos.
+  if [ ! -d "$ROOT/node_modules" ] || [ ! -f "$ROOT/packages/core/dist/index.js" ] || [ ! -f "$ROOT/packages/desktop/dist/index.html" ]; then
+    echo "  Instalando dependencias (npm install)..."
+    npm install --no-audit --no-fund
+  fi
   if [ ! -f "$ROOT/packages/core/dist/index.js" ]; then
     echo "  Compilando el core..."
     npm run build:core

@@ -75,7 +75,7 @@ export function CodeEditor({
         oneDark,
         langComp.current.of(languageExt(language)),
         roComp.current.of(EditorState.readOnly.of(!!readOnly)),
-        EditorView.updateListener.of((u) => {
+        EditorView.updateListener.of((u: { docChanged: boolean; state: EditorState }) => {
           if (u.docChanged) {
             onChangeRef.current(u.state.doc.toString());
           }
