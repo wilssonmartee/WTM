@@ -10,6 +10,13 @@ import {
   removeModuleDeps,
   ensureModuleDeps,
 } from "./deps.js";
+import {
+  initDynamic,
+  dynamicManifests,
+  dynamicRouter,
+  isDynamic,
+} from "./dynamic.js";
+import { estudioRouter } from "./estudio.js";
 
 /**
  * Registro de modulos del core.
@@ -29,6 +36,10 @@ const AVAILABLE_MODULES: WtmModule[] = [inventarioModule, articulosModule];
 const routers = new Map<string, Router>();
 
 export function initRegistry() {
+  // Motor de modulos dinamicos: crea su tabla de definiciones y asegura las
+  // tablas de datos de los modulos ya creados con el Estudio.
+  initDynamic();
+
   for (const mod of AVAILABLE_MODULES) {
     // Si el modulo ya estaba instalado, aseguramos su esquema (idempotente).
     // No auto-instalamos nada: asi puedes probar el flujo de instalar/quitar
@@ -72,6 +83,9 @@ function findModule(id: string): WtmModule | undefined {
 }
 
 export function isInstalled(id: string): boolean {
+  // Los modulos dinamicos (creados con el Estudio) estan "instalados" por el
+  // solo hecho de existir su definicion.
+  if (isDynamic(id)) return true;
   return !!db
     .prepare("SELECT 1 FROM installed_modules WHERE id = ?")
     .get(id);
@@ -155,10 +169,10 @@ export async function uninstall(
   return { ok: true, removedDeps };
 }
 
-/** Catalogo completo (reales + placeholders) con estado de instalacion. */
+/** Catalogo completo (reales + sistema + dinamicos) con estado de instalacion. */
 export function catalog(): ModuleInfo[] {
   const real: ModuleManifest[] = AVAILABLE_MODULES.map((m) => m.manifest);
-  const all = [...real, ...PLACEHOLDER_MODULES];
+  const all = [...real, ...PLACEHOLDER_MODULES, ...dynamicManifests()];
   return all.map((m) => {
     // Los modulos de SISTEMA (terminal, ajustes) son parte del nucleo: estan
     // siempre disponibles, no se instalan ni se desinstalan.
@@ -171,11 +185,34 @@ export function catalog(): ModuleInfo[] {
   });
 }
 
+// El router del Estudio (modulo de sistema) se construye una vez.
+let estudio: Router | null = null;
+
 /** Router despachador: /api/m/:moduleId/* -> router del modulo instalado. */
 export function moduleDispatcher(): Router {
   const router = Router({ mergeParams: true });
   router.use("/:moduleId", (req: Request, res: Response, next) => {
     const moduleId = (req.params as { moduleId: string }).moduleId;
+
+    // Estudio de modulos: modulo de sistema para crear/editar modulos.
+    if (moduleId === "estudio") {
+      if (!estudio) estudio = estudioRouter();
+      estudio(req, res, next);
+      return;
+    }
+
+    // Modulos dinamicos (creados con el Estudio): router CRUD generico que se
+    // construye al vuelo desde la definicion vigente (puede haber cambiado).
+    if (isDynamic(moduleId)) {
+      const dyn = dynamicRouter(moduleId);
+      if (!dyn) {
+        res.status(404).json({ ok: false, error: "Modulo dinamico invalido" });
+        return;
+      }
+      dyn(req, res, next);
+      return;
+    }
+
     if (!isInstalled(moduleId)) {
       res.status(404).json({ ok: false, error: "Modulo no instalado" });
       return;

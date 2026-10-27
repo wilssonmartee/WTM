@@ -12,11 +12,24 @@ import { Inventario } from "../apps/Inventario";
 import { Actualizaciones } from "../apps/Actualizaciones";
 import { Ajustes } from "../apps/Ajustes";
 import { Articulos } from "../apps/articulos/Articulos";
+import { Estudio } from "../apps/Estudio";
+import { DynamicModule } from "../apps/DynamicModule";
 import { wsUrl, getServerUrl } from "../lib/config";
 import { getToken } from "../lib/api";
 import { native } from "../lib/native";
 import type { SnapZone } from "../state/windows";
 import { snapGeom } from "../state/windows";
+
+// Modulos con UI propia (codigo dedicado). Cualquier otro modulo instalado se
+// considera dinamico (creado con el Estudio) y usa la vista generica.
+const BUILTIN_IDS = new Set([
+  "terminal",
+  "inventario",
+  "actualizaciones",
+  "ajustes",
+  "articulos",
+  "estudio",
+]);
 
 /** Estilo del rectangulo de vista previa para una zona de snap. */
 function snapPreviewStyle(
@@ -451,8 +464,14 @@ export function Desktop() {
               <Ajustes module={w.module} />
             ) : w.module.id === "articulos" ? (
               <Articulos module={w.module} />
-            ) : (
+            ) : w.module.id === "estudio" ? (
+              <Estudio module={w.module} />
+            ) : BUILTIN_IDS.has(w.module.id) ? (
               <ModuleView module={w.module} />
+            ) : (
+              // Cualquier otro modulo es dinamico (creado con el Estudio):
+              // su UI (lista + formularios) se genera desde su definicion.
+              <DynamicModule module={w.module} />
             )}
           </Window>
         ))}

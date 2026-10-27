@@ -6,6 +6,8 @@ import type {
   Company,
   CommitInfo,
   DesktopLayout,
+  DynModuleDef,
+  DynRecord,
   EffectivePermissions,
   ModuleInfo,
   Permission,
@@ -284,6 +286,63 @@ export const api = {
     if (res.status === 404) return null;
     if (!res.ok) throw new Error(`Error ${res.status}`);
     return new Uint8Array(await res.arrayBuffer());
+  },
+
+  // --- Estudio de modulos (crear/editar modulos dinamicos) ---
+  async estudioList(): Promise<DynModuleDef[]> {
+    return request("/api/m/estudio/modules");
+  },
+  async estudioGet(id: string): Promise<DynModuleDef> {
+    return request(`/api/m/estudio/modules/${id}`);
+  },
+  async estudioCreate(def: DynModuleDef): Promise<DynModuleDef> {
+    return request("/api/m/estudio/modules", {
+      method: "POST",
+      body: JSON.stringify(def),
+    });
+  },
+  async estudioUpdate(id: string, def: DynModuleDef): Promise<DynModuleDef> {
+    return request(`/api/m/estudio/modules/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(def),
+    });
+  },
+  async estudioDelete(id: string, purge = false): Promise<{ id: string }> {
+    return request(`/api/m/estudio/modules/${id}?purge=${purge}`, {
+      method: "DELETE",
+    });
+  },
+
+  // --- Datos de un modulo dinamico (CRUD generico) ---
+  async dynDef(moduleId: string): Promise<DynModuleDef> {
+    return request(`/api/m/${moduleId}/def`);
+  },
+  async dynList(moduleId: string): Promise<DynRecord[]> {
+    return request(`/api/m/${moduleId}/records`);
+  },
+  async dynCreate(
+    moduleId: string,
+    record: Record<string, unknown>,
+  ): Promise<DynRecord> {
+    return request(`/api/m/${moduleId}/records`, {
+      method: "POST",
+      body: JSON.stringify(record),
+    });
+  },
+  async dynUpdate(
+    moduleId: string,
+    recordId: string,
+    record: Record<string, unknown>,
+  ): Promise<DynRecord> {
+    return request(`/api/m/${moduleId}/records/${recordId}`, {
+      method: "PUT",
+      body: JSON.stringify(record),
+    });
+  },
+  async dynDelete(moduleId: string, recordId: string): Promise<{ id: string }> {
+    return request(`/api/m/${moduleId}/records/${recordId}`, {
+      method: "DELETE",
+    });
   },
 
   // --- Actualizaciones (GitHub) ---

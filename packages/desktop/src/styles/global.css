@@ -1239,6 +1239,75 @@ button {
   display: none;
 }
 
+/* --- Estudio de modulos --- */
+.wtm-estudio-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--wtm-border);
+  border-radius: 10px;
+  background: var(--wtm-surface);
+}
+.wtm-estudio-card__icon {
+  width: 38px;
+  height: 38px;
+  border-radius: 9px;
+  display: grid;
+  place-items: center;
+  color: #fff;
+  flex-shrink: 0;
+}
+.wtm-estudio-templates {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 10px;
+}
+.wtm-estudio-template {
+  text-align: left;
+  padding: 12px;
+  border: 1px solid var(--wtm-border);
+  border-radius: 10px;
+  background: var(--wtm-surface);
+  cursor: pointer;
+  transition: border-color 0.12s, transform 0.08s;
+}
+.wtm-estudio-template:hover {
+  border-color: var(--wtm-accent);
+  transform: translateY(-1px);
+}
+.wtm-estudio-icon {
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--wtm-border);
+  cursor: pointer;
+}
+.wtm-estudio-field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 8px;
+  border: 1px solid var(--wtm-border);
+  border-radius: 8px;
+  background: var(--wtm-surface);
+}
+.wtm-estudio-code {
+  margin-top: 10px;
+  padding: 12px;
+  background: #10151c;
+  color: #c8d2dc;
+  border-radius: 8px;
+  font-family: var(--wtm-mono);
+  font-size: 11.5px;
+  line-height: 1.5;
+  overflow: auto;
+  max-height: 320px;
+}
+
 /* --- Boton flotante: salir de pantalla completa (cliente nativo) --- */
 .wtm-exitfs {
   position: fixed;

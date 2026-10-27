@@ -1,12 +1,12 @@
 import type { ModuleManifest } from "@wtm/shared";
 
 /**
- * Modulos de catalogo que aun no tienen backend real (coming-soon) y modulos
- * de sistema que siempre estan presentes (terminal, ajustes). Aparecen en el
- * escritorio; los "coming-soon" muestran datos de ejemplo hasta que se
- * implementen como modulos reales.
+ * Modulos de SISTEMA que siempre estan presentes (no se instalan ni se
+ * desinstalan): terminal, ajustes, actualizaciones y el estudio de modulos.
+ * Aparecen en el escritorio y su UI vive en el frontend.
  *
- * El modulo Inventario YA NO esta aqui: vive como modulo real en inventario.ts.
+ * Ya no hay modulos "coming-soon": los modulos de negocio se crean con el
+ * Estudio de modulos o viven como modulos reales (inventario, articulos).
  */
 export const PLACEHOLDER_MODULES: ModuleManifest[] = [
   {
@@ -19,61 +19,6 @@ export const PLACEHOLDER_MODULES: ModuleManifest[] = [
     dataScope: "shared",
     status: "available",
     category: "sistema",
-  },
-  {
-    id: "facturacion",
-    name: "Facturacion",
-    version: "0.1.0",
-    description: "Emision de facturas y comprobantes. Datos aislados por empresa.",
-    icon: "receipt",
-    color: "#3b6fb0",
-    dataScope: "company",
-    status: "coming-soon",
-    category: "ventas",
-  },
-  {
-    id: "ventas",
-    name: "Ventas",
-    version: "0.1.0",
-    description: "Punto de venta y gestion de clientes.",
-    icon: "shopping-cart",
-    color: "#3f7d8c",
-    dataScope: "company",
-    status: "coming-soon",
-    category: "ventas",
-  },
-  {
-    id: "contabilidad",
-    name: "Contabilidad",
-    version: "0.1.0",
-    description: "Libro mayor, asientos y estados financieros.",
-    icon: "calculator",
-    color: "#6a5c9a",
-    dataScope: "company",
-    status: "coming-soon",
-    category: "contabilidad",
-  },
-  {
-    id: "rrhh",
-    name: "Gestion Humana",
-    version: "0.1.0",
-    description: "Empleados, nomina y asistencia.",
-    icon: "users",
-    color: "#99607d",
-    dataScope: "company",
-    status: "coming-soon",
-    category: "rrhh",
-  },
-  {
-    id: "reportes",
-    name: "Reportes",
-    version: "0.1.0",
-    description: "Tableros e informes sobre todos los modulos.",
-    icon: "bar-chart",
-    color: "#a05a52",
-    dataScope: "company",
-    status: "coming-soon",
-    category: "reportes",
   },
   {
     id: "ajustes",
@@ -93,6 +38,18 @@ export const PLACEHOLDER_MODULES: ModuleManifest[] = [
     description: "Actualizar el sistema desde GitHub y revertir versiones.",
     icon: "refresh",
     color: "#3f6b55",
+    dataScope: "shared",
+    status: "available",
+    category: "sistema",
+  },
+  {
+    id: "estudio",
+    name: "Estudio de modulos",
+    version: "0.1.0",
+    description:
+      "Crea y edita modulos del sistema: define datos, formularios y logica sin salir de WTM.",
+    icon: "code",
+    color: "#7a4fb0",
     dataScope: "shared",
     status: "available",
     category: "sistema",

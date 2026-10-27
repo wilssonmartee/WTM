@@ -25,6 +25,15 @@ const PATHS: Record<string, string> = {
   refresh: "M23 4v6h-6M1 20v-6h6M20.49 9A9 9 0 005.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 013.51 15",
   // Salir de pantalla completa: cuatro flechas apuntando hacia dentro.
   minimize: "M8 3v4a1 1 0 01-1 1H3M21 8h-4a1 1 0 01-1-1V3M16 21v-4a1 1 0 011-1h4M3 16h4a1 1 0 011 1v4",
+  // Codigo: chevrones < >.
+  code: "M16 18l6-6-6-6M8 6l-6 6 6 6",
+  plus: "M12 5v14M5 12h14",
+  trash: "M3 6h18M8 6V4a1 1 0 011-1h6a1 1 0 011 1v2M19 6l-1 14a1 1 0 01-1 1H7a1 1 0 01-1-1L5 6",
+  play: "M5 3l14 9-14 9V3z",
+  save: "M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2zM17 21v-8H7v8M7 3v5h8",
+  database:
+    "M12 3c4.97 0 9 1.34 9 3s-4.03 3-9 3-9-1.34-9-3 4.03-3 9-3zM3 6v6c0 1.66 4.03 3 9 3s9-1.34 9-3V6M3 12v6c0 1.66 4.03 3 9 3s9-1.34 9-3v-6",
+  edit: "M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7M18.5 2.5a2.12 2.12 0 013 3L12 15l-4 1 1-4 9.5-9.5z",
 };
 
 export function Icon({

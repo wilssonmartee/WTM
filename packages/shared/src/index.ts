@@ -150,6 +150,53 @@ export interface ModuleInfo extends ModuleManifest {
   installedVersion?: string;
 }
 
+// ============================================================
+//  Modulos DINAMICOS (creados con el Estudio de modulos)
+// ============================================================
+
+/** Tipo de un campo de datos de un modulo dinamico. */
+export type DynFieldType =
+  | "text"
+  | "textarea"
+  | "number"
+  | "money"
+  | "date"
+  | "boolean"
+  | "select";
+
+/** Un campo (columna) de un modulo dinamico. */
+export interface DynField {
+  key: string;
+  label: string;
+  type: DynFieldType;
+  required?: boolean;
+  options?: string[];
+  inList?: boolean;
+}
+
+/** Definicion completa de un modulo dinamico. */
+export interface DynModuleDef {
+  id: string;
+  name: string;
+  description: string;
+  icon: string;
+  color: string;
+  dataScope: ModuleDataScope;
+  category: ModuleCategory;
+  minLevel: number;
+  writeLevel: number;
+  fields: DynField[];
+}
+
+/** Un registro de datos de un modulo dinamico (fila de su tabla). */
+export interface DynRecord {
+  id: string;
+  company_id: string | null;
+  created_at: string;
+  updated_at: string;
+  [key: string]: unknown;
+}
+
 export type ModuleCategory =
   | "ventas"
   | "inventario"
