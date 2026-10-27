@@ -186,6 +186,8 @@ export interface DynModuleDef {
   minLevel: number;
   writeLevel: number;
   fields: DynField[];
+  /** Vista personalizada opcional (view.json). */
+  view?: DynView;
 }
 
 /** Un registro de datos de un modulo dinamico (fila de su tabla). */
@@ -195,6 +197,40 @@ export interface DynRecord {
   created_at: string;
   updated_at: string;
   [key: string]: unknown;
+}
+
+/**
+ * Vista personalizada (opcional) de un modulo dinamico. Define COMO se presenta
+ * su UI mas alla de la tabla generica: tarjetas de metricas arriba, titulo,
+ * modo de presentacion y resaltados. Es DECLARATIVA (datos, no codigo), asi el
+ * frontend la interpreta de forma segura. Vive en el archivo view.json.
+ */
+export interface DynMetric {
+  /** Etiqueta de la tarjeta. */
+  label: string;
+  /** Agregacion a mostrar. */
+  agg: "count" | "sum" | "avg" | "min" | "max";
+  /** Campo sobre el que se agrega (no aplica a count). */
+  field?: string;
+  /** Prefijo/sufijo opcional (p.ej. "$ "). */
+  prefix?: string;
+  suffix?: string;
+  /** Color de acento de la tarjeta. */
+  color?: string;
+}
+
+export interface DynView {
+  /** Modo de presentacion de los registros. */
+  layout?: "table" | "cards";
+  /** Tarjetas de metricas en la parte superior. */
+  metrics?: DynMetric[];
+  /** Campo por el que ordenar por defecto. */
+  sortBy?: string;
+  sortDir?: "asc" | "desc";
+  /** Para layout "cards": campo usado como titulo de cada tarjeta. */
+  cardTitle?: string;
+  /** Texto de ayuda que se muestra arriba del listado. */
+  banner?: string;
 }
 
 export type ModuleCategory =

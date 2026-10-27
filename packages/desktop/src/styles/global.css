@@ -1432,6 +1432,70 @@ button {
   border: 1px solid var(--wtm-border);
   color: var(--wtm-text-dim);
 }
+/* Metricas (vista personalizada de un modulo) */
+.wtm-metrics {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 10px;
+  margin-bottom: 14px;
+}
+.wtm-metric {
+  padding: 12px 14px;
+  border: 1px solid var(--wtm-border);
+  border-top: 3px solid var(--wtm-accent);
+  border-radius: 8px;
+  background: var(--wtm-surface);
+}
+.wtm-metric__value {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--wtm-text);
+}
+.wtm-metric__label {
+  font-size: 12px;
+  color: var(--wtm-text-dim);
+  margin-top: 2px;
+}
+/* Registros en modo tarjetas */
+.wtm-reccards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  gap: 10px;
+}
+.wtm-reccard {
+  border: 1px solid var(--wtm-border);
+  border-radius: 8px;
+  background: var(--wtm-surface);
+  padding: 12px;
+}
+.wtm-reccard__title {
+  font-weight: 700;
+  margin-bottom: 8px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.wtm-reccard__fields {
+  display: grid;
+  gap: 4px;
+  font-size: 12.5px;
+}
+.wtm-reccard__row {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+}
+.wtm-reccard__k {
+  color: var(--wtm-text-dim);
+}
+.wtm-reccard__actions {
+  display: flex;
+  gap: 4px;
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid var(--wtm-border);
+}
+
 /* Panel de referencia de la API wtm */
 .wtm-apihelp {
   background: #0d1117;
@@ -1472,57 +1536,27 @@ button {
   color: #ff9db0;
 }
 
-/* Editor de codigo (textarea + numeros de linea) */
-.wtm-code {
+/* Editor de codigo (CodeMirror 6) */
+.wtm-cm {
   flex: 1;
-  display: flex;
-  min-height: 300px; /* altura garantizada aunque el flex no la provea */
-  background: #10151c;
+  min-height: 300px;
+  min-width: 0;
+  border: 1px solid #222c38;
   border-radius: 8px;
   overflow: hidden;
-  border: 1px solid #222c38;
 }
-.wtm-code__gutter {
-  padding: 10px 8px;
-  text-align: right;
-  color: #55657a;
-  background: #0b1016;
-  font-family: var(--wtm-mono);
-  font-size: 12.5px;
-  line-height: 1.5;
-  user-select: none;
-  overflow: hidden;
-  min-width: 38px;
+.wtm-cm .cm-editor {
+  height: 100%;
 }
-.wtm-code__area {
-  flex: 1;
-  min-width: 0;
-  margin: 0;
-  padding: 10px 12px;
-  background: #10151c;
-  color: #d7e0ea;              /* texto CLARO y visible */
-  caret-color: #67e0a3;        /* caret verde */
-  font-family: var(--wtm-mono);
-  font-size: 12.5px;
-  line-height: 1.5;
-  white-space: pre;
-  tab-size: 2;
-  border: 0;
+.wtm-cm .cm-editor.cm-focused {
   outline: none;
-  resize: none;
-  overflow: auto;
-  cursor: text;
+}
+/* El texto del editor SI se selecciona (anula el user-select:none global). */
+.wtm-cm,
+.wtm-cm .cm-content,
+.wtm-cm .cm-line {
   user-select: text;
   -webkit-user-select: text;
-}
-.wtm-code__area:focus {
-  outline: none;
-}
-.wtm-code__area::selection {
-  background: rgba(90, 160, 230, 0.45);
-}
-.wtm-code__area::placeholder {
-  color: #4a5668;
 }
 
 /* --- Boton flotante: salir de pantalla completa (cliente nativo) --- */

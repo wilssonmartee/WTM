@@ -21,6 +21,7 @@ import { api } from "../lib/api";
 import { useAuth } from "../state/auth";
 import { Icon } from "../components/Icon";
 import { FileManager } from "./estudio/FileManager";
+import { ViewEditor } from "./estudio/ViewEditor";
 
 /**
  * ESTUDIO DE MODULOS — crea y edita modulos del sistema sin programar.
@@ -511,7 +512,9 @@ function Editor({
   showCode: boolean;
   setShowCode: (v: boolean) => void;
 }) {
-  const [editorTab, setEditorTab] = useState<"diseno" | "archivos">("diseno");
+  const [editorTab, setEditorTab] = useState<"diseno" | "vista" | "archivos">(
+    "diseno",
+  );
   function set<K extends keyof DynModuleDef>(key: K, value: DynModuleDef[K]) {
     setDraft({ ...draft, [key]: value });
   }
@@ -567,6 +570,14 @@ function Editor({
             Diseno
           </button>
           <button
+            className={`wtm-subtab ${editorTab === "vista" ? "is-active" : ""}`}
+            onClick={() => setEditorTab("vista")}
+            disabled={!canEditFiles}
+            title={canEditFiles ? "" : "Guarda el modulo primero"}
+          >
+            Vista
+          </button>
+          <button
             className={`wtm-subtab ${editorTab === "archivos" ? "is-active" : ""}`}
             onClick={() => setEditorTab("archivos")}
             disabled={!canEditFiles}
@@ -579,6 +590,8 @@ function Editor({
 
       {editorTab === "archivos" && canEditFiles ? (
         <FileManager moduleId={draft.id} />
+      ) : editorTab === "vista" && canEditFiles ? (
+        <ViewEditor moduleId={draft.id} fields={draft.fields} />
       ) : (
         renderDesign()
       )}

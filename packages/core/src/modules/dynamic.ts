@@ -68,6 +68,8 @@ export interface DynamicModuleDef {
   minLevel: number;
   writeLevel: number;
   fields: FieldDef[];
+  /** Vista personalizada opcional (view.json). Interpretada por el frontend. */
+  view?: unknown;
 }
 
 const IDENT = /^[a-z][a-z0-9_]{1,30}$/;
@@ -94,6 +96,9 @@ export function getDef(id: string): DynamicModuleDef | null {
   const manifest = readJson<Partial<DynamicModuleDef>>(id, "manifest.json");
   if (!manifest) return null;
   const schema = readJson<{ fields: FieldDef[] }>(id, "schema.json");
+  // Vista personalizada opcional (view.json). Si no existe o es invalida, se
+  // usa la vista generica (tabla).
+  const view = readJson<unknown>(id, "view.json");
   return {
     id,
     name: String(manifest.name ?? id),
@@ -105,6 +110,7 @@ export function getDef(id: string): DynamicModuleDef | null {
     minLevel: clampLevel(manifest.minLevel, 1),
     writeLevel: clampLevel(manifest.writeLevel, 2),
     fields: Array.isArray(schema?.fields) ? schema!.fields : [],
+    view: view ?? undefined,
   };
 }
 
@@ -284,9 +290,13 @@ export function scaffoldModuleFiles(def: DynamicModuleDef): void {
     JSON.stringify({ fields: def.fields }, null, 2),
   );
 
-  // Solo creamos logic.js y README la primera vez (no pisar lo del usuario).
+  // Solo creamos logic.js, view.json y README la primera vez (no pisar lo del
+  // usuario). view.json vacio = vista generica de tabla.
   if (!fs.existsSync(path.join(dir, "logic.js"))) {
     writeFileText(def.id, "logic.js", DEFAULT_LOGIC_JS);
+  }
+  if (!fs.existsSync(path.join(dir, "view.json"))) {
+    writeFileText(def.id, "view.json", DEFAULT_VIEW_JSON);
   }
   if (!fs.existsSync(path.join(dir, "README.md"))) {
     writeFileText(
@@ -616,6 +626,22 @@ export function dynamicRouter(id: string): Router | null {
 
   return router;
 }
+
+// Plantilla inicial de view.json (vista personalizada). Por defecto usa la
+// vista de tabla sin metricas; el usuario puede anadir tarjetas y cambiar el
+// modo a "cards" desde el editor visual de vista o editando este archivo.
+const DEFAULT_VIEW_JSON = JSON.stringify(
+  {
+    layout: "table",
+    metrics: [],
+    sortBy: "",
+    sortDir: "desc",
+    cardTitle: "",
+    banner: "",
+  },
+  null,
+  2,
+);
 
 // Plantilla inicial de logic.js que ve el usuario al crear un modulo.
 const DEFAULT_LOGIC_JS = `// Logica del modulo (opcional). Se ejecuta en un entorno seguro y aislado.

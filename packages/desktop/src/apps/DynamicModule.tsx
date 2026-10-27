@@ -1,5 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { DynField, DynModuleDef, DynRecord, ModuleManifest } from "@wtm/shared";
+import type {
+  DynField,
+  DynMetric,
+  DynModuleDef,
+  DynRecord,
+  DynView,
+  ModuleManifest,
+} from "@wtm/shared";
 import {
   Button,
   Input,
@@ -65,6 +72,31 @@ export function DynamicModule({ module }: { module: ModuleManifest }) {
       ),
     );
   }, [rows, query, def]);
+
+  // Vista personalizada (view.json). Si no hay, valores por defecto.
+  const view: DynView = useMemo(() => (def?.view ?? {}) as DynView, [def]);
+
+  // Ordenamiento segun la vista.
+  const sorted = useMemo(() => {
+    const sb = view.sortBy;
+    if (!sb) return filtered;
+    const dir = view.sortDir === "asc" ? 1 : -1;
+    return [...filtered].sort((a, b) => {
+      const av = a[sb];
+      const bv = b[sb];
+      if (av == null) return 1;
+      if (bv == null) return -1;
+      if (typeof av === "number" && typeof bv === "number")
+        return (av - bv) * dir;
+      return String(av).localeCompare(String(bv), "es", { numeric: true }) * dir;
+    });
+  }, [filtered, view]);
+
+  // Metricas calculadas sobre TODOS los registros (no el filtro).
+  const metrics = useMemo(() => {
+    const ms = view.metrics ?? [];
+    return ms.map((m) => ({ def: m, value: computeMetric(m, rows) }));
+  }, [view, rows]);
 
   async function remove(r: DynRecord) {
     if (!confirm("¿Eliminar este registro?")) return;
@@ -135,65 +167,136 @@ export function DynamicModule({ module }: { module: ModuleManifest }) {
 
         {def && !creating && !editing && (
           <>
+            {view.banner && <Notice>{view.banner}</Notice>}
+
+            {/* Tarjetas de metricas (vista personalizada) */}
+            {metrics.length > 0 && (
+              <div className="wtm-metrics">
+                {metrics.map((m, i) => (
+                  <div
+                    key={i}
+                    className="wtm-metric"
+                    style={{ borderTopColor: m.def.color || module.color }}
+                  >
+                    <div className="wtm-metric__value">
+                      {m.def.prefix ?? ""}
+                      {m.value}
+                      {m.def.suffix ?? ""}
+                    </div>
+                    <div className="wtm-metric__label">{m.def.label}</div>
+                  </div>
+                ))}
+              </div>
+            )}
+
             <div style={{ fontSize: 12, color: "var(--wtm-text-dim)", marginBottom: 8 }}>
-              {filtered.length.toLocaleString()} registro(s)
+              {sorted.length.toLocaleString()} registro(s)
             </div>
-            <div className="ui-table-wrap">
-              <table className="ui-table">
-                <thead>
-                  <tr>
-                    {listFields.map((f) => (
-                      <th key={f.key}>{f.label}</th>
-                    ))}
-                    {canWrite && <th style={{ width: 90 }}></th>}
-                  </tr>
-                </thead>
-                <tbody>
-                  {filtered.map((r) => (
-                    <tr key={r.id}>
-                      {listFields.map((f) => (
-                        <td key={f.key}>{formatCell(f, r[f.key])}</td>
-                      ))}
-                      {canWrite && (
-                        <td>
-                          <div style={{ display: "flex", gap: 4 }}>
-                            <button
-                              className="ui-btn ui-btn--ghost"
-                              style={{ padding: "2px 7px" }}
-                              title="Editar"
-                              onClick={() => {
-                                setCreating(false);
-                                setEditing(r);
-                              }}
-                            >
-                              <Icon name="edit" size={13} />
-                            </button>
-                            <button
-                              className="ui-btn ui-btn--ghost"
-                              style={{ padding: "2px 7px" }}
-                              title="Eliminar"
-                              onClick={() => remove(r)}
-                            >
-                              <Icon name="trash" size={13} />
-                            </button>
-                          </div>
-                        </td>
+
+            {view.layout === "cards" ? (
+              <div className="wtm-reccards">
+                {sorted.map((r) => (
+                  <div key={r.id} className="wtm-reccard">
+                    <div className="wtm-reccard__title">
+                      {String(
+                        (view.cardTitle && r[view.cardTitle]) ??
+                          r[listFields[0]?.key] ??
+                          "—",
                       )}
-                    </tr>
-                  ))}
-                  {filtered.length === 0 && (
+                    </div>
+                    <div className="wtm-reccard__fields">
+                      {listFields.map((f) => (
+                        <div key={f.key} className="wtm-reccard__row">
+                          <span className="wtm-reccard__k">{f.label}</span>
+                          <span>{formatCell(f, r[f.key])}</span>
+                        </div>
+                      ))}
+                    </div>
+                    {canWrite && (
+                      <div className="wtm-reccard__actions">
+                        <button
+                          className="ui-btn ui-btn--ghost"
+                          style={{ padding: "2px 7px" }}
+                          onClick={() => {
+                            setCreating(false);
+                            setEditing(r);
+                          }}
+                        >
+                          <Icon name="edit" size={13} /> Editar
+                        </button>
+                        <button
+                          className="ui-btn ui-btn--ghost"
+                          style={{ padding: "2px 7px" }}
+                          onClick={() => remove(r)}
+                        >
+                          <Icon name="trash" size={13} />
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                ))}
+                {sorted.length === 0 && (
+                  <Notice>Sin registros todavia.</Notice>
+                )}
+              </div>
+            ) : (
+              <div className="ui-table-wrap">
+                <table className="ui-table">
+                  <thead>
                     <tr>
-                      <td
-                        colSpan={listFields.length + (canWrite ? 1 : 0)}
-                        style={{ color: "var(--wtm-text-dim)", textAlign: "center", padding: 24 }}
-                      >
-                        Sin registros todavia.
-                      </td>
+                      {listFields.map((f) => (
+                        <th key={f.key}>{f.label}</th>
+                      ))}
+                      {canWrite && <th style={{ width: 90 }}></th>}
                     </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
+                  </thead>
+                  <tbody>
+                    {sorted.map((r) => (
+                      <tr key={r.id}>
+                        {listFields.map((f) => (
+                          <td key={f.key}>{formatCell(f, r[f.key])}</td>
+                        ))}
+                        {canWrite && (
+                          <td>
+                            <div style={{ display: "flex", gap: 4 }}>
+                              <button
+                                className="ui-btn ui-btn--ghost"
+                                style={{ padding: "2px 7px" }}
+                                title="Editar"
+                                onClick={() => {
+                                  setCreating(false);
+                                  setEditing(r);
+                                }}
+                              >
+                                <Icon name="edit" size={13} />
+                              </button>
+                              <button
+                                className="ui-btn ui-btn--ghost"
+                                style={{ padding: "2px 7px" }}
+                                title="Eliminar"
+                                onClick={() => remove(r)}
+                              >
+                                <Icon name="trash" size={13} />
+                              </button>
+                            </div>
+                          </td>
+                        )}
+                      </tr>
+                    ))}
+                    {sorted.length === 0 && (
+                      <tr>
+                        <td
+                          colSpan={listFields.length + (canWrite ? 1 : 0)}
+                          style={{ color: "var(--wtm-text-dim)", textAlign: "center", padding: 24 }}
+                        >
+                          Sin registros todavia.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </>
         )}
       </ModuleBody>
@@ -207,6 +310,33 @@ function formatCell(f: DynField, v: unknown): string {
   if (f.type === "money") return `$ ${Number(v).toLocaleString("es", { minimumFractionDigits: 2 })}`;
   if (f.type === "number") return Number(v).toLocaleString("es");
   return String(v);
+}
+
+/** Calcula el valor de una metrica sobre los registros. */
+function computeMetric(m: DynMetric, rows: DynRecord[]): string {
+  if (m.agg === "count") return rows.length.toLocaleString("es");
+  const field = m.field;
+  if (!field) return "—";
+  const nums = rows
+    .map((r) => Number(r[field]))
+    .filter((n) => Number.isFinite(n));
+  if (nums.length === 0) return "0";
+  let out = 0;
+  switch (m.agg) {
+    case "sum":
+      out = nums.reduce((a, b) => a + b, 0);
+      break;
+    case "avg":
+      out = nums.reduce((a, b) => a + b, 0) / nums.length;
+      break;
+    case "min":
+      out = Math.min(...nums);
+      break;
+    case "max":
+      out = Math.max(...nums);
+      break;
+  }
+  return out.toLocaleString("es", { maximumFractionDigits: 2 });
 }
 
 // ================= Formulario de registro =================

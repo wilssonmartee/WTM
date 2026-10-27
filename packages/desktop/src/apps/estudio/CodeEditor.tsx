@@ -1,15 +1,41 @@
-import { useRef } from "react";
+import { useEffect, useRef } from "react";
+import { EditorState, Compartment } from "@codemirror/state";
+import {
+  EditorView,
+  keymap,
+  lineNumbers,
+  highlightActiveLine,
+  highlightActiveLineGutter,
+  highlightSpecialChars,
+  drawSelection,
+} from "@codemirror/view";
+import {
+  defaultKeymap,
+  history,
+  historyKeymap,
+  indentWithTab,
+} from "@codemirror/commands";
+import {
+  bracketMatching,
+  foldGutter,
+  indentOnInput,
+  syntaxHighlighting,
+  defaultHighlightStyle,
+  foldKeymap,
+} from "@codemirror/language";
+import { javascript } from "@codemirror/lang-javascript";
+import { json } from "@codemirror/lang-json";
+import { oneDark } from "@codemirror/theme-one-dark";
 
 /**
- * Editor de codigo robusto y simple: un <textarea> con texto CLARO y visible,
- * numeros de linea, fuente monoespaciada, Tab = 2 espacios y auto-indentado.
- *
- * Deliberadamente SIN overlay de resaltado (esa tecnica es fragil y causaba
- * texto invisible/desalineado). Prioriza que editar funcione siempre.
+ * Editor de codigo real basado en CodeMirror 6: resaltado de sintaxis, numeros
+ * de linea, plegado, auto-indentado, deshacer/rehacer, Tab para indentar,
+ * emparejado de parentesis y tema oscuro. Soporta JSON, JavaScript/TypeScript.
  */
 export function CodeEditor({
   value,
   onChange,
+  language,
   readOnly,
 }: {
   value: string;
@@ -17,78 +43,103 @@ export function CodeEditor({
   language?: string;
   readOnly?: boolean;
 }) {
-  const taRef = useRef<HTMLTextAreaElement>(null);
-  const gutterRef = useRef<HTMLDivElement>(null);
+  const host = useRef<HTMLDivElement>(null);
+  const view = useRef<EditorView | null>(null);
+  const langComp = useRef(new Compartment());
+  const roComp = useRef(new Compartment());
+  const onChangeRef = useRef(onChange);
+  onChangeRef.current = onChange;
 
-  const lineCount = Math.max(1, value.split("\n").length);
+  // Crear el editor una vez.
+  useEffect(() => {
+    if (!host.current) return;
+    const state = EditorState.create({
+      doc: value,
+      extensions: [
+        lineNumbers(),
+        highlightActiveLineGutter(),
+        highlightSpecialChars(),
+        history(),
+        foldGutter(),
+        drawSelection(),
+        indentOnInput(),
+        bracketMatching(),
+        syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
+        highlightActiveLine(),
+        keymap.of([
+          indentWithTab,
+          ...defaultKeymap,
+          ...historyKeymap,
+          ...foldKeymap,
+        ]),
+        oneDark,
+        langComp.current.of(languageExt(language)),
+        roComp.current.of(EditorState.readOnly.of(!!readOnly)),
+        EditorView.updateListener.of((u) => {
+          if (u.docChanged) {
+            onChangeRef.current(u.state.doc.toString());
+          }
+        }),
+        EditorView.theme({
+          "&": { height: "100%", fontSize: "12.5px" },
+          ".cm-scroller": {
+            fontFamily: "var(--wtm-mono)",
+            lineHeight: "1.5",
+          },
+        }),
+      ],
+    });
+    const v = new EditorView({ state, parent: host.current });
+    view.current = v;
+    return () => {
+      v.destroy();
+      view.current = null;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-  function syncScroll() {
-    if (gutterRef.current && taRef.current) {
-      gutterRef.current.scrollTop = taRef.current.scrollTop;
-    }
-  }
-
-  function onKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
-    if (readOnly) return;
-    const ta = e.currentTarget;
-    if (e.key === "Tab") {
-      e.preventDefault();
-      const start = ta.selectionStart;
-      const end = ta.selectionEnd;
-      const next = value.slice(0, start) + "  " + value.slice(end);
-      onChange(next);
-      requestAnimationFrame(() => {
-        ta.selectionStart = ta.selectionEnd = start + 2;
+  // Sincronizar el valor cuando cambia desde fuera (abrir otro archivo).
+  useEffect(() => {
+    const v = view.current;
+    if (!v) return;
+    const current = v.state.doc.toString();
+    if (current !== value) {
+      v.dispatch({
+        changes: { from: 0, to: current.length, insert: value },
       });
-    } else if (e.key === "Enter") {
-      const start = ta.selectionStart;
-      const lineStart = value.lastIndexOf("\n", start - 1) + 1;
-      const indentMatch = value.slice(lineStart, start).match(/^[ \t]*/);
-      const indent = indentMatch ? indentMatch[0] : "";
-      if (indent) {
-        e.preventDefault();
-        const next =
-          value.slice(0, start) + "\n" + indent + value.slice(ta.selectionEnd);
-        onChange(next);
-        requestAnimationFrame(() => {
-          ta.selectionStart = ta.selectionEnd = start + 1 + indent.length;
-        });
-      }
     }
-  }
+  }, [value]);
 
-  return (
-    <div className="wtm-code">
-      <div className="wtm-code__gutter" ref={gutterRef}>
-        {Array.from({ length: lineCount }, (_, i) => (
-          <div key={i}>{i + 1}</div>
-        ))}
-      </div>
-      <textarea
-        ref={taRef}
-        className="wtm-code__area"
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        onKeyDown={onKeyDown}
-        onScroll={syncScroll}
-        spellCheck={false}
-        autoCapitalize="off"
-        autoCorrect="off"
-        autoComplete="off"
-        readOnly={readOnly}
-        wrap="off"
-        placeholder="(archivo vacio)"
-      />
-    </div>
-  );
+  // Cambiar el lenguaje al abrir otro archivo.
+  useEffect(() => {
+    view.current?.dispatch({
+      effects: langComp.current.reconfigure(languageExt(language)),
+    });
+  }, [language]);
+
+  // Cambiar readOnly.
+  useEffect(() => {
+    view.current?.dispatch({
+      effects: roComp.current.reconfigure(EditorState.readOnly.of(!!readOnly)),
+    });
+  }, [readOnly]);
+
+  return <div className="wtm-cm" ref={host} />;
+}
+
+function languageExt(language?: string) {
+  if (language === "json") return json();
+  if (language === "javascript" || language === "typescript")
+    return javascript({ typescript: language === "typescript" });
+  return [];
 }
 
 export function langOf(path: string): string {
   if (path.endsWith(".json")) return "json";
   if (path.endsWith(".js")) return "javascript";
+  if (path.endsWith(".ts")) return "typescript";
   if (path.endsWith(".md")) return "markdown";
   if (path.endsWith(".css")) return "css";
   if (path.endsWith(".html")) return "html";
-  if (path.endsWith(".ts")) return "typescript";
   return "text";
 }
