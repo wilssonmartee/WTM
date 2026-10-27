@@ -1545,6 +1545,52 @@ button {
   border-radius: 8px;
   overflow: hidden;
 }
+/* Editor de respaldo (textarea + numeros de linea) */
+.wtm-code {
+  flex: 1;
+  display: flex;
+  min-height: 300px;
+  background: #10151c;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid #222c38;
+}
+.wtm-code__gutter {
+  padding: 10px 8px;
+  text-align: right;
+  color: #55657a;
+  background: #0b1016;
+  font-family: var(--wtm-mono);
+  font-size: 12.5px;
+  line-height: 1.5;
+  user-select: none;
+  overflow: hidden;
+  min-width: 38px;
+}
+.wtm-code__area {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  padding: 10px 12px;
+  background: #10151c;
+  color: #d7e0ea;
+  caret-color: #67e0a3;
+  font-family: var(--wtm-mono);
+  font-size: 12.5px;
+  line-height: 1.5;
+  white-space: pre;
+  tab-size: 2;
+  border: 0;
+  outline: none;
+  resize: none;
+  overflow: auto;
+  cursor: text;
+  user-select: text;
+  -webkit-user-select: text;
+}
+.wtm-code__area:focus {
+  outline: none;
+}
 .wtm-cm .cm-editor {
   height: 100%;
 }
