@@ -505,13 +505,14 @@ function Editor({
       {editorTab === "archivos" && canEditFiles ? (
         <FileManager moduleId={draft.id} />
       ) : (
-        <DesignTab />
+        renderDesign()
       )}
     </div>
   );
 
-  // El cuerpo del disenador visual, extraido para poder alternar con Archivos.
-  function DesignTab() {
+  // El cuerpo del disenador visual como VARIABLE (no como componente anidado:
+  // eso remontaba el formulario en cada tecla y perdia el foco).
+  function renderDesign() {
     return (
     <>
       <h3 style={h3}>1. Datos del modulo</h3>
